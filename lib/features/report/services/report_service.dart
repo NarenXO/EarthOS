@@ -1,0 +1,46 @@
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../models/report_model.dart';
+
+class ReportService {
+  final SupabaseClient _supabase = Supabase.instance.client;
+  static const String _tableName = 'reports';
+
+  Future<void> createReport({
+    required String type,
+    required double lat,
+    required double lng,
+    required String createdBy,
+    required String createdByName,
+    String? photoBefore,
+  }) async {
+    await _supabase.from(_tableName).insert({
+      'type': type,
+      'lat': lat,
+      'lng': lng,
+      'created_by': createdBy,
+      'created_by_name': createdByName,
+      if (photoBefore != null) 'photo_before': photoBefore,
+    });
+  }
+
+  Future<List<Report>> fetchReports() async {
+    final response = await _supabase
+        .from(_tableName)
+        .select()
+        .order('created_at', ascending: false);
+
+    return (response as List<dynamic>)
+        .map((json) => Report.fromJson(json as Map<String, dynamic>))
+        .toList();
+  }
+
+  Stream<List<Report>> streamReports() {
+    return _supabase
+        .from(_tableName)
+        .stream(primaryKey: ['id'])
+        .order('created_at', ascending: false)
+        .map((event) => event
+            .map((json) => Report.fromJson(json as Map<String, dynamic>))
+            .toList());
+  }
+}

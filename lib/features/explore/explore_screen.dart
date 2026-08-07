@@ -9,10 +9,13 @@
 |--------------------------------------------------------------------------
 */
 
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../../core/constants/app_colors.dart';
 import 'package:geolocator/geolocator.dart';
+import '../report/services/report_service.dart';
+import '../report/models/report_model.dart';
 
 
 class ExploreScreen extends StatefulWidget {
@@ -26,12 +29,22 @@ class _ExploreScreenState extends State<ExploreScreen> {
 
   GoogleMapController? _mapController;
   LatLng? _currentLatLng;
-String _locationText = "Fetching location...";
+  String _locationText = "Fetching location...";
+  final ReportService _reportService = ReportService();
+  final Set<Marker> _markers = {};
+  StreamSubscription<List<Report>>? _reportsSubscription;
 
 @override
 void initState() {
   super.initState();
   _initializeLocation();
+  _subscribeToReports();
+}
+
+@override
+void dispose() {
+  _reportsSubscription?.cancel();
+  super.dispose();
 }
 
   static const CameraPosition _initialCameraPosition = CameraPosition(
@@ -98,6 +111,7 @@ Future<void> _initializeLocation() async {
           // ===============================
           GoogleMap(
             initialCameraPosition: _initialCameraPosition,
+            markers: _markers,
             onMapCreated: (controller) {
   _mapController = controller;
 
@@ -303,5 +317,25 @@ Future<void> _initializeLocation() async {
         ],
       ),
     );
+  }
+
+  void _subscribeToReports() {
+    _reportsSubscription = _reportService.streamReports().listen((reports) {
+      setState(() {
+        _markers.clear();
+        for (final report in reports) {
+          _markers.add(
+            Marker(
+              markerId: MarkerId(report.id),
+              position: LatLng(report.lat, report.lng),
+              infoWindow: InfoWindow(
+                title: report.type,
+                snippet: 'Status: ${report.status}',
+              ),
+            ),
+          );
+        }
+      });
+    });
   }
 }
