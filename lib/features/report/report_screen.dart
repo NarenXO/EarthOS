@@ -9,10 +9,16 @@
 |--------------------------------------------------------------------------
 */
 
+import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:geolocator/geolocator.dart';
 import '../../core/config/app_config.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/services/vision_service.dart';
+import '../../core/services/user_identity_service.dart';
+import 'services/report_service.dart';
 
 class ReportScreen extends StatefulWidget {
   const ReportScreen({super.key});
@@ -25,6 +31,14 @@ class _ReportScreenState extends State<ReportScreen>
     with SingleTickerProviderStateMixin {
 
   late AnimationController _orbController;
+  final ImagePicker _imagePicker = ImagePicker();
+  final VisionService _visionService = VisionService();
+  final ReportService _reportService = ReportService();
+  final UserIdentityService _userIdentityService = UserIdentityService();
+
+  File? _selectedImage;
+  bool _isAnalyzing = false;
+  Position? _currentPosition;
 
   @override
   void initState() {
@@ -33,12 +47,99 @@ class _ReportScreenState extends State<ReportScreen>
       vsync: this,
       duration: const Duration(seconds: 6),
     )..repeat();
+    _getCurrentLocation();
   }
 
   @override
   void dispose() {
     _orbController.dispose();
     super.dispose();
+  }
+
+  Future<void> _getCurrentLocation() async {
+    LocationPermission permission = await Geolocator.checkPermission();
+
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      return;
+    }
+
+    final position = await Geolocator.getCurrentPosition(
+      desiredAccuracy: LocationAccuracy.high,
+    );
+
+    setState(() {
+      _currentPosition = position;
+    });
+  }
+
+  Future<void> _pickImage() async {
+    final XFile? image = await _imagePicker.pickImage(
+      source: ImageSource.camera,
+      imageQuality: 80,
+    );
+
+    if (image != null) {
+      setState(() {
+        _selectedImage = File(image.path);
+      });
+      await _classifyAndSubmit();
+    }
+  }
+
+  Future<void> _classifyAndSubmit() async {
+    if (_selectedImage == null || _currentPosition == null) return;
+
+    setState(() {
+      _isAnalyzing = true;
+    });
+
+    try {
+      final result = await _visionService.classifyWaste(_selectedImage!);
+
+      final wasteType = result['waste_type'] as String?;
+      final severity = result['severity'] as int?;
+
+      final user = await _userIdentityService.getOrCreateUser();
+
+      await _reportService.createReport(
+        type: wasteType ?? 'unknown',
+        lat: _currentPosition!.latitude,
+        lng: _currentPosition!.longitude,
+        createdBy: user.id,
+        createdByName: user.name,
+        photoBefore: _selectedImage!.path,
+        aiClassification: wasteType,
+        severity: severity,
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Report submitted successfully'),
+          ),
+        );
+      }
+
+      setState(() {
+        _selectedImage = null;
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+          ),
+        );
+      }
+    } finally {
+      setState(() {
+        _isAnalyzing = false;
+      });
+    }
   }
 
   @override
@@ -93,6 +194,29 @@ class _ReportScreenState extends State<ReportScreen>
             alignment: Alignment.bottomCenter,
             child: _buildGlassChatPanel(context),
           ),
+
+          // ===============================
+          // LOADING OVERLAY
+          // ===============================
+          if (_isAnalyzing)
+            Container(
+              color: Colors.black.withValues(alpha: 0.7),
+              child: const Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CircularProgressIndicator(
+                      valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+                    ),
+                    SizedBox(height: 16),
+                    Text(
+                      'Analyzing waste...',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  ],
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -183,7 +307,7 @@ class _ReportScreenState extends State<ReportScreen>
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    _buildInputButton(Icons.camera_alt_outlined),
+                    _buildInputButton(Icons.camera_alt_outlined, onTap: _pickImage),
                     _buildInputButton(Icons.keyboard_outlined),
                     _buildInputButton(Icons.mic_none),
                   ],
@@ -199,16 +323,19 @@ class _ReportScreenState extends State<ReportScreen>
   // =========================================================
   // INPUT BUTTON
   // =========================================================
-  Widget _buildInputButton(IconData icon) {
-    return Container(
-      height: 52,
-      width: 52,
-      decoration: BoxDecoration(
-        color: AppColors.card,
-        shape: BoxShape.circle,
-        border: Border.all(color: AppColors.border),
+  Widget _buildInputButton(IconData icon, {VoidCallback? onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        height: 52,
+        width: 52,
+        decoration: BoxDecoration(
+          color: AppColors.card,
+          shape: BoxShape.circle,
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Icon(icon, color: AppColors.primary),
       ),
-      child: Icon(icon, color: AppColors.primary),
     );
   }
 }
