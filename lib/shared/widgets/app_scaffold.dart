@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
 import '../../features/explore/explore_screen.dart';
 import '../../features/report/report_screen.dart';
+import '../../features/axis/axis_screen.dart';
 import '../../features/impact/impact_screen.dart';
 import '../../features/profile/profile_screen.dart';
 
@@ -26,6 +27,7 @@ class _AppScaffoldState extends State<AppScaffold> {
   final List<Widget> _screens = const [
     ExploreScreen(),
     ReportScreen(),
+    AxisScreen(),
     ImpactScreen(),
     ProfileScreen(),
   ];
@@ -81,9 +83,11 @@ class _AppScaffoldState extends State<AppScaffold> {
           const SizedBox(width: 32),
           _dockItem(Icons.blur_circular, 1),
           const SizedBox(width: 32),
-          _dockItem(Icons.insights, 2),
+          _dockItem(Icons.smart_toy, 2),
           const SizedBox(width: 32),
-          _dockItem(Icons.person, 3),
+          _dockItem(Icons.insights, 3),
+          const SizedBox(width: 32),
+          _dockItem(Icons.person, 4),
         ],
       ),
     );
