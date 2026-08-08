@@ -18,6 +18,9 @@ import 'package:earthos/core/services/user_identity_service.dart';
 import 'package:earthos/core/services/vision_service.dart';
 import 'package:earthos/core/services/carbon_engine.dart';
 import 'package:earthos/core/services/sensitive_zone_service.dart';
+import 'package:earthos/core/services/risk_engine.dart';
+import 'package:earthos/core/services/recommendation_engine.dart';
+import 'package:earthos/core/services/trend_service.dart';
 import 'package:earthos/features/report/services/report_service.dart';
 import 'package:earthos/features/axis/services/axis_service.dart';
 import 'package:earthos/features/axis/models/axis_response.dart';
@@ -40,6 +43,7 @@ class _AxisScreenState extends State<AxisScreen> {
   final ReportService _reportService = ReportService();
   final ProductService _productService = ProductService();
   final SystemContextService _systemContextService = SystemContextService();
+  final TrendService _trendService = TrendService();
   final ImagePicker _imagePicker = ImagePicker();
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
@@ -66,6 +70,33 @@ class _AxisScreenState extends State<AxisScreen> {
       final forestAlerts = context['forestAlerts'] as Map<String, dynamic>? ?? {};
       final highConfidence = forestAlerts['highConfidence'] as int? ?? 0;
 
+      // Calculate risk score
+      final globalStats = await _reportService.fetchImpactStats();
+      final sensitiveReports = globalStats['totalSensitiveReports'] as int? ?? 0;
+      final riskScore = RiskEngine.calculateRiskScore(
+        nearbyOpenReports: nearbyOpenReports,
+        sensitiveReports: sensitiveReports,
+        highForestAlerts: highConfidence,
+        daysSinceLastCleanup: 30,
+      );
+
+      // Get trends
+      final reports = await _reportService.fetchReports();
+      final reportsJson = reports.map((r) => r.toJson()).toList();
+      final trends = await _trendService.calculateTrends(
+        reports: reportsJson,
+        forestAlerts: [],
+      );
+
+      // Generate recommendations
+      final recommendations = RecommendationEngine.generateRecommendations(
+        riskScore: riskScore,
+        trends: trends,
+        nearbyOpenReports: nearbyOpenReports,
+        forestHighConfidence: highConfidence,
+        userRank: rank,
+      );
+
       final greetingParts = <String>[];
       greetingParts.add('Hello! I\'m AXIS, your environmental assistant.');
 
@@ -84,6 +115,11 @@ class _AxisScreenState extends State<AxisScreen> {
       final totalCarbon = userImpact['totalVerifiedCarbon'] as double? ?? 0.0;
       if (totalCarbon > 0) {
         greetingParts.add('🌱 You\'ve diverted ${totalCarbon.toStringAsFixed(1)} kg CO₂e through verified cleanups.');
+      }
+
+      // Append recommendations
+      if (recommendations.isNotEmpty) {
+        greetingParts.add('\n${RecommendationEngine.formatRecommendations(recommendations)}');
       }
 
       if (greetingParts.length == 1) {

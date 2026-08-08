@@ -15,6 +15,7 @@ import 'package:earthos/core/constants/app_colors.dart';
 import 'package:earthos/core/services/forest_service.dart';
 import 'package:earthos/core/services/risk_engine.dart';
 import 'package:earthos/core/services/trend_service.dart';
+import 'package:earthos/core/services/recommendation_engine.dart';
 import 'package:earthos/features/report/services/report_service.dart';
 import 'package:earthos/features/axis/services/system_context_service.dart';
 import 'package:earthos/core/services/user_identity_service.dart';
@@ -32,10 +33,12 @@ class _ImpactScreenState extends State<ImpactScreen> {
   final SystemContextService _systemContextService = SystemContextService();
   final UserIdentityService _userIdentityService = UserIdentityService();
   final TrendService _trendService = TrendService();
+  final RecommendationEngine _recommendationEngine = RecommendationEngine();
   Map<String, dynamic>? _stats;
   Map<String, dynamic>? _forestAlerts;
   Map<String, dynamic>? _systemContext;
   Map<String, dynamic>? _trends;
+  List<String>? _recommendations;
   double? _riskScore;
   bool _isLoading = true;
   Position? _currentPosition;
@@ -93,9 +96,20 @@ class _ImpactScreenState extends State<ImpactScreen> {
         daysSinceLastCleanup: daysSinceLastCleanup,
       );
 
+      // Generate recommendations
+      final rank = context['rank'] as int? ?? 0;
+      final recommendations = _recommendationEngine.generateRecommendations(
+        riskScore: score,
+        trends: _trends ?? {},
+        nearbyOpenReports: nearbyOpenReports,
+        forestHighConfidence: highForestAlerts,
+        userRank: rank,
+      );
+
       setState(() {
         _systemContext = context;
         _riskScore = score;
+        _recommendations = recommendations;
       });
     } catch (e) {
       // Silently fail, keep default values
@@ -196,6 +210,18 @@ class _ImpactScreenState extends State<ImpactScreen> {
             ),
             const SizedBox(height: 16),
             _buildTrendsCard(),
+
+            const SizedBox(height: 30),
+
+            // ===============================
+            // RECOMMENDED ACTIONS
+            // ===============================
+            Text(
+              "✅ Recommended Actions",
+              style: Theme.of(context).textTheme.headlineMedium,
+            ),
+            const SizedBox(height: 16),
+            _buildRecommendationsCard(),
 
             const SizedBox(height: 30),
 
@@ -601,6 +627,64 @@ class _ImpactScreenState extends State<ImpactScreen> {
             isGood: forestTrendChange < 0,
           ),
         ],
+      ),
+    );
+  }
+
+  // =========================================================
+  // RECOMMENDATIONS CARD
+  // =========================================================
+  Widget _buildRecommendationsCard() {
+    final recommendations = _recommendations ?? [];
+    final topRecommendations = recommendations.take(2).toList();
+
+    if (topRecommendations.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(20),
+        decoration: _cardDecoration(),
+        child: const Text(
+          'No specific recommendations at this time.',
+          style: TextStyle(
+            fontSize: 14,
+            color: AppColors.textSecondary,
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: _cardDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: topRecommendations.asMap().entries.map((entry) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  margin: const EdgeInsets.only(top: 2),
+                  child: const Icon(
+                    Icons.check_circle,
+                    color: Colors.green,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    entry.value,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }).toList(),
       ),
     );
   }
