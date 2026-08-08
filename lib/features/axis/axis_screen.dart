@@ -22,6 +22,7 @@ import 'package:earthos/features/report/services/report_service.dart';
 import 'package:earthos/features/axis/services/axis_service.dart';
 import 'package:earthos/features/axis/models/axis_response.dart';
 import 'package:earthos/features/axis/services/product_service.dart';
+import 'package:earthos/features/axis/services/system_context_service.dart';
 import 'package:earthos/features/axis/widgets/barcode_scanner_screen.dart';
 
 class AxisScreen extends StatefulWidget {
@@ -38,6 +39,7 @@ class _AxisScreenState extends State<AxisScreen> {
   final SensitiveZoneService _sensitiveZoneService = SensitiveZoneService();
   final ReportService _reportService = ReportService();
   final ProductService _productService = ProductService();
+  final SystemContextService _systemContextService = SystemContextService();
   final ImagePicker _imagePicker = ImagePicker();
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
@@ -50,6 +52,58 @@ class _AxisScreenState extends State<AxisScreen> {
   void initState() {
     super.initState();
     _initializeLocation();
+    _loadSystemContext();
+  }
+
+  Future<void> _loadSystemContext() async {
+    try {
+      final user = await _userIdentityService.getOrCreateUser();
+      final context = await _systemContextService.fetchSystemContext(user.id);
+      
+      final userImpact = context['userImpact'] as Map<String, dynamic>? ?? {};
+      final rank = context['rank'] as int? ?? 0;
+      final nearbyOpenReports = context['nearbyOpenReports'] as int? ?? 0;
+      final forestAlerts = context['forestAlerts'] as Map<String, dynamic>? ?? {};
+      final highConfidence = forestAlerts['highConfidence'] as int? ?? 0;
+
+      final greetingParts = <String>[];
+      greetingParts.add('Hello! I\'m AXIS, your environmental assistant.');
+
+      if (nearbyOpenReports > 0) {
+        greetingParts.add('📍 There are $nearbyOpenReports open cleanup reports within 1km of you. Consider helping out!');
+      }
+
+      if (rank <= 3 && rank > 0) {
+        greetingParts.add('🏆 Amazing! You\'re ranked #$rank on the global leaderboard. Keep up the great work!');
+      }
+
+      if (highConfidence > 5) {
+        greetingParts.add('🌲 Warning: High forest loss activity detected in your area. Stay alert.');
+      }
+
+      final totalCarbon = userImpact['totalVerifiedCarbon'] as double? ?? 0.0;
+      if (totalCarbon > 0) {
+        greetingParts.add('🌱 You\'ve diverted ${totalCarbon.toStringAsFixed(1)} kg CO₂e through verified cleanups.');
+      }
+
+      if (greetingParts.length == 1) {
+        greetingParts.add('How can I help you make an environmental impact today?');
+      }
+
+      setState(() {
+        _messages.add(ChatMessage(
+          text: greetingParts.join('\n\n'),
+          isUser: false,
+        ));
+      });
+    } catch (e) {
+      setState(() {
+        _messages.add(ChatMessage(
+          text: 'Hello! I\'m AXIS, your environmental assistant. How can I help you today?',
+          isUser: false,
+        ));
+      });
+    }
   }
 
   Future<void> _initializeLocation() async {
