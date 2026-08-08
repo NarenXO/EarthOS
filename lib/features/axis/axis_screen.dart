@@ -13,6 +13,8 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:speech_to_text/speech_to_text.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 import 'package:earthos/core/constants/app_colors.dart';
 import 'package:earthos/core/services/user_identity_service.dart';
 import 'package:earthos/core/services/vision_service.dart';
@@ -27,6 +29,7 @@ import 'package:earthos/features/axis/models/axis_response.dart';
 import 'package:earthos/features/axis/services/product_service.dart';
 import 'package:earthos/features/axis/services/system_context_service.dart';
 import 'package:earthos/features/axis/widgets/barcode_scanner_screen.dart';
+import 'package:earthos/features/axis/widgets/axis_avatar.dart';
 
 class AxisScreen extends StatefulWidget {
   const AxisScreen({super.key});
@@ -48,15 +51,80 @@ class _AxisScreenState extends State<AxisScreen> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
 
+  final SpeechToText _speechToText = SpeechToText();
+  final FlutterTts _flutterTts = FlutterTts();
+
   final List<ChatMessage> _messages = [];
   bool _isLoading = false;
   Position? _currentPosition;
+  AxisState _axisState = AxisState.idle;
+  bool _isListening = false;
+  bool _showKeypad = false;
 
   @override
   void initState() {
     super.initState();
     _initializeLocation();
     _loadSystemContext();
+    _initializeSpeech();
+    _initializeTts();
+  }
+
+  @override
+  void dispose() {
+    _speechToText.stop();
+    _flutterTts.stop();
+    super.dispose();
+  }
+
+  Future<void> _initializeSpeech() async {
+    await _speechToText.initialize();
+  }
+
+  Future<void> _initializeTts() async {
+    await _flutterTts.setSharedInstance(true);
+    await _flutterTts.awaitSpeakCompletion(true);
+  }
+
+  Future<void> _toggleListening() async {
+    if (_isListening) {
+      await _speechToText.stop();
+      setState(() {
+        _isListening = false;
+        _axisState = AxisState.idle;
+      });
+    } else {
+      await _speechToText.listen(
+        onResult: (result) {
+          setState(() {
+            _messageController.text = result.recognizedWords;
+          });
+        },
+        onSoundLevelChange: (level) {},
+        cancelOnError: true,
+        listenMode: ListenMode.confirmation,
+        partialResults: true,
+      );
+      setState(() {
+        _isListening = true;
+        _axisState = AxisState.listening;
+      });
+    }
+  }
+
+  Future<void> _speak(String text) async {
+    setState(() {
+      _axisState = AxisState.speaking;
+    });
+    await _flutterTts.speak(text);
+    setState(() {
+      _axisState = AxisState.idle;
+    });
+  }
+
+  void _executePredefinedCommand(String command) {
+    _messageController.text = command;
+    _sendMessage();
   }
 
   Future<void> _loadSystemContext() async {
@@ -327,13 +395,6 @@ Provide a concise, informative response.
     }
   }
 
-  @override
-  void dispose() {
-    _messageController.dispose();
-    _scrollController.dispose();
-    super.dispose();
-  }
-
   Future<void> _sendMessage() async {
     final message = _messageController.text.trim();
     if (message.isEmpty) return;
@@ -344,6 +405,7 @@ Provide a concise, informative response.
         isUser: true,
       ));
       _isLoading = true;
+      _axisState = AxisState.processing;
       _messageController.clear();
     });
 
@@ -363,9 +425,13 @@ Provide a concise, informative response.
           executedAction: response.executedAction,
         ));
         _isLoading = false;
+        _axisState = AxisState.idle;
       });
 
       _scrollToBottom();
+      
+      // Speak the response
+      await _speak(response.message);
     } catch (e) {
       setState(() {
         _messages.add(ChatMessage(
@@ -373,6 +439,7 @@ Provide a concise, informative response.
           isUser: false,
         ));
         _isLoading = false;
+        _axisState = AxisState.idle;
       });
       _scrollToBottom();
     }
@@ -404,10 +471,27 @@ Provide a concise, informative response.
           ),
         ),
         elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: () => _showVoiceSettings(),
+          ),
+        ],
       ),
       body: Column(
         children: [
+          // Avatar Area
           Expanded(
+            flex: 2,
+            child: Center(
+              child: AxisAvatar(state: _axisState),
+            ),
+          ),
+          // Command Chips
+          _buildCommandChips(),
+          // Chat Messages
+          Expanded(
+            flex: 3,
             child: ListView.builder(
               controller: _scrollController,
               padding: const EdgeInsets.all(16),
@@ -417,22 +501,46 @@ Provide a concise, informative response.
               },
             ),
           ),
-          if (_isLoading)
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: Center(
-                child: CircularProgressIndicator(
-                  valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
-                ),
-              ),
-            ),
-          _buildInputArea(),
+          // Interaction Dock
+          _buildInteractionDock(),
         ],
       ),
     );
   }
 
-  Widget _buildInputArea() {
+  Widget _buildCommandChips() {
+    return Container(
+      height: 60,
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        children: [
+          _buildCommandChip('Report Waste', () => _executePredefinedCommand('report waste')),
+          _buildCommandChip('Cleanup Event', () => _executePredefinedCommand('create cleanup event')),
+          _buildCommandChip('Risk Status', () => _executePredefinedCommand('risk')),
+          _buildCommandChip('Trends', () => _executePredefinedCommand('trends')),
+          _buildCommandChip('Recommend', () => _executePredefinedCommand('recommend')),
+          _buildCommandChip('Forest Status', () => _executePredefinedCommand('forest status')),
+          _buildCommandChip('Weekly Summary', () => _executePredefinedCommand('weekly summary')),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCommandChip(String label, VoidCallback onTap) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: ActionChip(
+        label: Text(label),
+        onPressed: onTap,
+        backgroundColor: AppColors.primary.withOpacity(0.2),
+        labelStyle: const TextStyle(color: AppColors.primary),
+      ),
+    );
+  }
+
+  Widget _buildInteractionDock() {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -441,61 +549,209 @@ Provide a concise, informative response.
           top: BorderSide(color: AppColors.border),
         ),
       ),
-      child: Row(
+      child: Column(
         children: [
-          IconButton(
-            onPressed: _isLoading ? null : _captureAndReport,
-            icon: const Icon(Icons.camera_alt),
-            color: AppColors.primary,
-            style: IconButton.styleFrom(
-              backgroundColor: AppColors.primary.withOpacity(0.1),
-            ),
-          ),
-          const SizedBox(width: 8),
-          IconButton(
-            onPressed: _isLoading ? null : _scanBarcode,
-            icon: const Icon(Icons.qr_code_scanner),
-            color: AppColors.primary,
-            style: IconButton.styleFrom(
-              backgroundColor: AppColors.primary.withOpacity(0.1),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: TextField(
-              controller: _messageController,
-              style: const TextStyle(color: Colors.white),
-              decoration: InputDecoration(
-                hintText: 'Ask AXIS anything...',
-                hintStyle: TextStyle(color: AppColors.textSecondary),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(24),
-                  borderSide: BorderSide(color: AppColors.border),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(24),
-                  borderSide: BorderSide(color: AppColors.border),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(24),
-                  borderSide: BorderSide(color: AppColors.primary),
-                ),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 12,
+          // Keypad (shown when toggled)
+          if (_showKeypad) _buildKeypad(),
+          // Input row
+          Row(
+            children: [
+              // Mic button
+              IconButton(
+                onPressed: _isLoading ? null : _toggleListening,
+                icon: Icon(_isListening ? Icons.mic : Icons.mic_none),
+                color: _isListening ? Colors.green : AppColors.primary,
+                style: IconButton.styleFrom(
+                  backgroundColor: _isListening 
+                      ? Colors.green.withOpacity(0.2) 
+                      : AppColors.primary.withOpacity(0.1),
                 ),
               ),
-              onSubmitted: (_) => _sendMessage(),
-            ),
+              const SizedBox(width: 8),
+              // Camera button
+              IconButton(
+                onPressed: _isLoading ? null : _captureAndReport,
+                icon: const Icon(Icons.camera_alt),
+                color: AppColors.primary,
+                style: IconButton.styleFrom(
+                  backgroundColor: AppColors.primary.withOpacity(0.1),
+                ),
+              ),
+              const SizedBox(width: 8),
+              // Barcode button
+              IconButton(
+                onPressed: _isLoading ? null : _scanBarcode,
+                icon: const Icon(Icons.qr_code_scanner),
+                color: AppColors.primary,
+                style: IconButton.styleFrom(
+                  backgroundColor: AppColors.primary.withOpacity(0.1),
+                ),
+              ),
+              const SizedBox(width: 8),
+              // Keypad toggle
+              IconButton(
+                onPressed: () {
+                  setState(() {
+                    _showKeypad = !_showKeypad;
+                  });
+                },
+                icon: Icon(_showKeypad ? Icons.keyboard_arrow_down : Icons.keyboard),
+                color: AppColors.primary,
+                style: IconButton.styleFrom(
+                  backgroundColor: AppColors.primary.withOpacity(0.1),
+                ),
+              ),
+              const SizedBox(width: 8),
+              // History button
+              IconButton(
+                onPressed: () {
+                  // Show history dialog
+                },
+                icon: const Icon(Icons.history),
+                color: AppColors.primary,
+                style: IconButton.styleFrom(
+                  backgroundColor: AppColors.primary.withOpacity(0.1),
+                ),
+              ),
+              const SizedBox(width: 8),
+              // Text input
+              Expanded(
+                child: TextField(
+                  controller: _messageController,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    hintText: 'Ask AXIS anything...',
+                    hintStyle: TextStyle(color: AppColors.textSecondary),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(24),
+                      borderSide: BorderSide(color: AppColors.border),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(24),
+                      borderSide: BorderSide(color: AppColors.border),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(24),
+                      borderSide: BorderSide(color: AppColors.primary),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 12,
+                    ),
+                  ),
+                  onSubmitted: (_) => _sendMessage(),
+                ),
+              ),
+              const SizedBox(width: 8),
+              // Send button
+              IconButton(
+                onPressed: _isLoading ? null : _sendMessage,
+                icon: const Icon(Icons.send),
+                color: AppColors.primary,
+                style: IconButton.styleFrom(
+                  backgroundColor: AppColors.primary.withOpacity(0.1),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 12),
-          IconButton(
-            onPressed: _isLoading ? null : _sendMessage,
-            icon: const Icon(Icons.send),
-            color: AppColors.primary,
-            style: IconButton.styleFrom(
-              backgroundColor: AppColors.primary.withOpacity(0.1),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildKeypad() {
+    return Container(
+      height: 200,
+      margin: const EdgeInsets.only(bottom: 16),
+      child: GridView.count(
+        crossAxisCount: 3,
+        mainAxisSpacing: 8,
+        crossAxisSpacing: 8,
+        children: [
+          _buildKeypadButton('1', '1'),
+          _buildKeypadButton('2', 'ABC'),
+          _buildKeypadButton('3', 'DEF'),
+          _buildKeypadButton('4', 'GHI'),
+          _buildKeypadButton('5', 'JKL'),
+          _buildKeypadButton('6', 'MNO'),
+          _buildKeypadButton('7', 'PQRS'),
+          _buildKeypadButton('8', 'TUV'),
+          _buildKeypadButton('9', 'WXYZ'),
+          _buildKeypadButton('*', ''),
+          _buildKeypadButton('0', 'SPACE'),
+          _buildKeypadButton('#', '⌫'),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildKeypadButton(String mainLabel, String subLabel) {
+    return InkWell(
+      onTap: () {
+        if (mainLabel == '#') {
+          if (_messageController.text.isNotEmpty) {
+            _messageController.text = _messageController.text.substring(0, _messageController.text.length - 1);
+          }
+        } else if (mainLabel == '0' && subLabel == 'SPACE') {
+          _messageController.text += ' ';
+        } else {
+          _messageController.text += mainLabel;
+        }
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppColors.card,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              mainLabel,
+              style: const TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: AppColors.textPrimary,
+              ),
             ),
+            if (subLabel.isNotEmpty)
+              Text(
+                subLabel,
+                style: TextStyle(
+                  fontSize: 10,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showVoiceSettings() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Voice Settings'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Voice selection coming soon'),
+            const SizedBox(height: 16),
+            SwitchListTile(
+              title: const Text('Voice Output'),
+              value: true,
+              onChanged: (value) {
+                // Toggle voice output
+              },
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
           ),
         ],
       ),
