@@ -10,8 +10,13 @@
 */
 
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:earthos/core/constants/app_colors.dart';
 import 'package:earthos/core/services/user_identity_service.dart';
+import 'package:earthos/core/services/vision_service.dart';
+import 'package:earthos/core/services/carbon_engine.dart';
+import 'package:earthos/core/services/sensitive_zone_service.dart';
 import 'package:earthos/features/report/services/report_service.dart';
 import 'package:earthos/features/axis/services/axis_service.dart';
 import 'package:earthos/features/axis/models/axis_response.dart';
@@ -26,11 +31,134 @@ class AxisScreen extends StatefulWidget {
 class _AxisScreenState extends State<AxisScreen> {
   final AxisService _axisService = AxisService();
   final UserIdentityService _userIdentityService = UserIdentityService();
+  final VisionService _visionService = VisionService();
+  final SensitiveZoneService _sensitiveZoneService = SensitiveZoneService();
+  final ReportService _reportService = ReportService();
+  final ImagePicker _imagePicker = ImagePicker();
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
 
   final List<ChatMessage> _messages = [];
   bool _isLoading = false;
+  Position? _currentPosition;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeLocation();
+  }
+
+  Future<void> _initializeLocation() async {
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+    if (permission == LocationPermission.deniedForever) return;
+
+    final position = await Geolocator.getCurrentPosition(
+      desiredAccuracy: LocationAccuracy.high,
+    );
+    setState(() {
+      _currentPosition = position;
+    });
+  }
+
+  Future<void> _captureAndReport() async {
+    try {
+      final XFile? image = await _imagePicker.pickImage(
+        source: ImageSource.camera,
+        imageQuality: 80,
+      );
+
+      if (image == null) return;
+
+      setState(() {
+        _isLoading = true;
+      });
+
+      // AI Classification
+      final classificationResult = await _visionService.classifyWaste(image);
+      final wasteType = classificationResult['waste_type'] as String?;
+      final severity = classificationResult['severity'] as int?;
+
+      // Get location
+      if (_currentPosition == null) {
+        await _initializeLocation();
+      }
+
+      if (_currentPosition == null) {
+        setState(() {
+          _messages.add(ChatMessage(
+            text: 'Unable to get location. Please enable location services.',
+            isUser: false,
+          ));
+          _isLoading = false;
+        });
+        _scrollToBottom();
+        return;
+      }
+
+      // Sensitive zone check
+      final isSensitive = await _sensitiveZoneService.isNearSensitiveZone(
+        lat: _currentPosition!.latitude,
+        lng: _currentPosition!.longitude,
+      );
+
+      // Carbon calculation
+      var adjustedSeverity = severity ?? 1;
+      if (isSensitive) {
+        adjustedSeverity = (adjustedSeverity + 1).clamp(1, 5);
+      }
+
+      final carbonImpact = CarbonEngine.calculateImpact(
+        wasteType: wasteType ?? 'unknown',
+        severity: adjustedSeverity,
+      );
+
+      // Create report
+      final user = await _userIdentityService.getOrCreateUser();
+      await _reportService.createReport(
+        type: wasteType ?? 'unknown',
+        lat: _currentPosition!.latitude,
+        lng: _currentPosition!.longitude,
+        createdBy: user.id,
+        createdByName: user.name,
+        photoBefore: image.path,
+        aiClassification: wasteType,
+        severity: adjustedSeverity,
+        carbonEstimate: carbonImpact,
+        isSensitive: isSensitive,
+      );
+
+      // Show result message
+      final resultMessage = '''
+Waste detected: ${wasteType ?? 'unknown'} (severity $adjustedSeverity)
+Estimated impact: ${carbonImpact.toStringAsFixed(1)} kg CO₂e
+Sensitive zone nearby: ${isSensitive ? 'Yes' : 'No'}
+Report submitted successfully.
+''';
+
+      setState(() {
+        _messages.add(ChatMessage(
+          text: resultMessage,
+          isUser: false,
+          executedAction: true,
+        ));
+        _isLoading = false;
+      });
+
+      _scrollToBottom();
+    } catch (e) {
+      setState(() {
+        _messages.add(ChatMessage(
+          text: 'Error capturing report: $e',
+          isUser: false,
+        ));
+        _isLoading = false;
+      });
+      _scrollToBottom();
+    }
+  }
 
   @override
   void dispose() {
@@ -148,6 +276,15 @@ class _AxisScreenState extends State<AxisScreen> {
       ),
       child: Row(
         children: [
+          IconButton(
+            onPressed: _isLoading ? null : _captureAndReport,
+            icon: const Icon(Icons.camera_alt),
+            color: AppColors.primary,
+            style: IconButton.styleFrom(
+              backgroundColor: AppColors.primary.withOpacity(0.1),
+            ),
+          ),
+          const SizedBox(width: 8),
           Expanded(
             child: TextField(
               controller: _messageController,
