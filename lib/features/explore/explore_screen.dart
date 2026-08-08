@@ -113,19 +113,76 @@ class _ExploreScreenState extends State<ExploreScreen> {
       setState(() {
         _markers.clear();
         for (final report in reports) {
-          _markers.add(
-            Marker(
-              markerId: MarkerId(report.id),
-              position: LatLng(report.lat, report.lng),
-              infoWindow: InfoWindow(
-                title: report.type,
-                snippet: 'Status: ${report.status}',
+          if (report.type == 'cleanup_event') {
+            // Green marker for cleanup events
+            _markers.add(
+              Marker(
+                markerId: MarkerId(report.id),
+                position: LatLng(report.lat, report.lng),
+                icon: BitmapDescriptor.defaultMarkerWithHue(
+                  BitmapDescriptor.hueGreen,
+                ),
+                onTap: () => _showEventDetails(report),
               ),
-            ),
-          );
+            );
+          } else {
+            // Default marker for other reports
+            _markers.add(
+              Marker(
+                markerId: MarkerId(report.id),
+                position: LatLng(report.lat, report.lng),
+                infoWindow: InfoWindow(
+                  title: report.type,
+                  snippet: 'Status: ${report.status}',
+                ),
+              ),
+            );
+          }
         }
       });
     });
+  }
+
+  void _showEventDetails(Report report) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(report.title ?? 'Cleanup Event'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (report.description != null) ...[
+              Text(report.description!),
+              const SizedBox(height: 8),
+            ],
+            if (report.eventDate != null) ...[
+              Text('Date: ${report.eventDate}'),
+              const SizedBox(height: 8),
+            ],
+            Text('Participants: ${report.participantsCount ?? 0}'),
+            const SizedBox(height: 8),
+            Text('Organized by: ${report.createdByName}'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              await _reportService.joinEvent(report.id);
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Successfully joined cleanup event!')),
+              );
+            },
+            child: const Text('Join Cleanup'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override

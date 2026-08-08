@@ -14,6 +14,10 @@ class Report {
   final String createdByName;
   final DateTime createdAt;
   final DateTime? verifiedAt;
+  final String? title;
+  final String? description;
+  final String? eventDate;
+  final int? participantsCount;
 
   Report({
     required this.id,
@@ -31,6 +35,10 @@ class Report {
     required this.createdByName,
     required this.createdAt,
     this.verifiedAt,
+    this.title,
+    this.description,
+    this.eventDate,
+    this.participantsCount,
   });
 
   factory Report.fromJson(Map<String, dynamic> json) {
@@ -52,6 +60,10 @@ class Report {
       verifiedAt: json['verified_at'] != null 
           ? DateTime.parse(json['verified_at'] as String) 
           : null,
+      title: json['title'] as String?,
+      description: json['description'] as String?,
+      eventDate: json['event_date'] as String?,
+      participantsCount: json['participants_count'] as int?,
     );
   }
 
@@ -72,6 +84,10 @@ class Report {
       'created_by_name': createdByName,
       'created_at': createdAt.toIso8601String(),
       'verified_at': verifiedAt?.toIso8601String(),
+      'title': title,
+      'description': description,
+      'event_date': eventDate,
+      'participants_count': participantsCount,
     };
   }
 }

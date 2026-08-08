@@ -16,6 +16,9 @@ class ReportService {
     int? severity,
     double? carbonEstimate,
     bool? isSensitive,
+    String? title,
+    String? description,
+    String? eventDate,
   }) async {
     await _supabase.from(_tableName).insert({
       'type': type,
@@ -28,6 +31,10 @@ class ReportService {
       if (severity != null) 'severity': severity,
       if (carbonEstimate != null) 'carbon_estimate': carbonEstimate,
       if (isSensitive != null) 'is_sensitive': isSensitive,
+      if (title != null) 'title': title,
+      if (description != null) 'description': description,
+      if (eventDate != null) 'event_date': eventDate,
+      if (type == 'cleanup_event') 'participants_count': 0,
     });
   }
 
@@ -137,5 +144,9 @@ class ReportService {
         (b['carbonDiverted'] as double).compareTo(a['carbonDiverted'] as double));
 
     return leaderboard;
+  }
+
+  Future<void> joinEvent(String eventId) async {
+    await _supabase.rpc('increment_participants', params: {'event_id': eventId});
   }
 }
