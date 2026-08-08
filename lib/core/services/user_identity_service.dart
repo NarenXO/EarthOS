@@ -1,29 +1,6 @@
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
-
-class UserIdentity {
-  final String id;
-  final String name;
-
-  UserIdentity({
-    required this.id,
-    required this.name,
-  });
-
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'name': name,
-    };
-  }
-
-  factory UserIdentity.fromJson(Map<String, dynamic> json) {
-    return UserIdentity(
-      id: json['id'] as String,
-      name: json['name'] as String,
-    );
-  }
-}
+import 'package:earthos/core/models/user_identity.dart';
 
 class UserIdentityService {
   static const String _idKey = 'user_id';
