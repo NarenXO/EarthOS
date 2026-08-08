@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class SensitiveZoneService {
-  final String _apiKey = 'YOUR_GOOGLE_PLACES_API_KEY';
+  final String _apiKey = 'REDACTED';
 
   Future<bool> isNearSensitiveZone({
     required double lat,
