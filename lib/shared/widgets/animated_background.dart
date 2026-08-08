@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../core/constants/app_colors.dart';
+import 'package:earthos/core/constants/app_colors.dart';
 
 class AnimatedBackground extends StatefulWidget {
   final Widget child;

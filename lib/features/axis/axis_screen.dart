@@ -10,11 +10,11 @@
 */
 
 import 'package:flutter/material.dart';
-import '../../core/constants/app_colors.dart';
-import '../../core/services/user_identity_service.dart';
-import '../report/services/report_service.dart';
-import 'services/axis_service.dart';
-import 'models/axis_response.dart';
+import 'package:earthos/core/constants/app_colors.dart';
+import 'package:earthos/core/services/user_identity_service.dart';
+import 'package:earthos/features/report/services/report_service.dart';
+import 'package:earthos/features/axis/services/axis_service.dart';
+import 'package:earthos/features/axis/models/axis_response.dart';
 
 class AxisScreen extends StatefulWidget {
   const AxisScreen({super.key});

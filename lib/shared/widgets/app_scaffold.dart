@@ -6,12 +6,12 @@
 */
 
 import 'package:flutter/material.dart';
-import '../../core/constants/app_colors.dart';
-import '../../features/explore/explore_screen.dart';
-import '../../features/report/report_screen.dart';
-import '../../features/axis/axis_screen.dart';
-import '../../features/impact/impact_screen.dart';
-import '../../features/profile/profile_screen.dart';
+import 'package:earthos/core/constants/app_colors.dart';
+import 'package:earthos/features/explore/explore_screen.dart';
+import 'package:earthos/features/report/report_screen.dart';
+import 'package:earthos/features/axis/axis_screen.dart';
+import 'package:earthos/features/impact/impact_screen.dart';
+import 'package:earthos/features/profile/profile_screen.dart';
 
 class AppScaffold extends StatefulWidget {
   const AppScaffold({super.key});

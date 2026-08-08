@@ -14,14 +14,14 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:geolocator/geolocator.dart';
-import '../../core/config/app_config.dart';
-import '../../core/constants/app_colors.dart';
-import '../../core/services/vision_service.dart';
-import '../../core/services/user_identity_service.dart';
-import '../../core/services/cleanup_verification_service.dart';
-import '../../core/services/carbon_engine.dart';
-import '../../core/services/sensitive_zone_service.dart';
-import 'services/report_service.dart';
+import 'package:earthos/core/config/app_config.dart';
+import 'package:earthos/core/constants/app_colors.dart';
+import 'package:earthos/core/services/vision_service.dart';
+import 'package:earthos/core/services/user_identity_service.dart';
+import 'package:earthos/core/services/cleanup_verification_service.dart';
+import 'package:earthos/core/services/carbon_engine.dart';
+import 'package:earthos/core/services/sensitive_zone_service.dart';
+import 'package:earthos/features/report/services/report_service.dart';
 
 class ReportScreen extends StatefulWidget {
   const ReportScreen({super.key});

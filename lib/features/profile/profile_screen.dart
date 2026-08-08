@@ -10,12 +10,12 @@
 */
 
 import 'package:flutter/material.dart';
-import '../../core/constants/app_colors.dart';
-import '../../core/config/app_config.dart';
-import '../../core/services/user_identity_service.dart';
-import '../report/services/report_service.dart';
-import 'models/certificate_model.dart';
-import 'widgets/environmental_certificate_card.dart';
+import 'package:earthos/core/constants/app_colors.dart';
+import 'package:earthos/core/config/app_config.dart';
+import 'package:earthos/core/services/user_identity_service.dart';
+import 'package:earthos/features/report/services/report_service.dart';
+import 'package:earthos/features/profile/models/certificate_model.dart';
+import 'package:earthos/features/profile/widgets/environmental_certificate_card.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});

@@ -10,8 +10,8 @@
 */
 
 import 'package:flutter/material.dart';
-import '../../core/constants/app_colors.dart';
-import '../report/services/report_service.dart';
+import 'package:earthos/core/constants/app_colors.dart';
+import 'package:earthos/features/report/services/report_service.dart';
 
 class ImpactScreen extends StatefulWidget {
   const ImpactScreen({super.key});

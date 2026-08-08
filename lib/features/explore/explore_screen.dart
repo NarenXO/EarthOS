@@ -11,9 +11,9 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 
-import '../../core/constants/app_colors.dart';
-import '../report/services/report_service.dart';
-import '../report/models/report_model.dart';
+import 'package:earthos/core/constants/app_colors.dart';
+import 'package:earthos/features/report/services/report_service.dart';
+import 'package:earthos/features/report/models/report_model.dart';
 
 class ExploreScreen extends StatefulWidget {
   const ExploreScreen({super.key});

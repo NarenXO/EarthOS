@@ -1,5 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../models/report_model.dart';
+import 'package:earthos/features/report/models/report_model.dart';
 
 class ReportService {
   final SupabaseClient _supabase = Supabase.instance.client;

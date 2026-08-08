@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import '../../core/constants/app_colors.dart';
-import '../models/certificate_model.dart';
+import 'package:earthos/core/constants/app_colors.dart';
+import 'package:earthos/features/profile/models/certificate_model.dart';
 
 class EnvironmentalCertificateCard extends StatelessWidget {
   final Certificate certificate;
