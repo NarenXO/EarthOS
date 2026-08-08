@@ -12,6 +12,7 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:earthos/core/constants/app_colors.dart';
 import 'package:earthos/core/services/user_identity_service.dart';
 import 'package:earthos/core/services/vision_service.dart';
@@ -20,6 +21,8 @@ import 'package:earthos/core/services/sensitive_zone_service.dart';
 import 'package:earthos/features/report/services/report_service.dart';
 import 'package:earthos/features/axis/services/axis_service.dart';
 import 'package:earthos/features/axis/models/axis_response.dart';
+import 'package:earthos/features/axis/services/product_service.dart';
+import 'package:earthos/features/axis/widgets/barcode_scanner_screen.dart';
 
 class AxisScreen extends StatefulWidget {
   const AxisScreen({super.key});
@@ -34,6 +37,7 @@ class _AxisScreenState extends State<AxisScreen> {
   final VisionService _visionService = VisionService();
   final SensitiveZoneService _sensitiveZoneService = SensitiveZoneService();
   final ReportService _reportService = ReportService();
+  final ProductService _productService = ProductService();
   final ImagePicker _imagePicker = ImagePicker();
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
@@ -152,6 +156,79 @@ Report submitted successfully.
       setState(() {
         _messages.add(ChatMessage(
           text: 'Error capturing report: $e',
+          isUser: false,
+        ));
+        _isLoading = false;
+      });
+      _scrollToBottom();
+    }
+  }
+
+  Future<void> _scanBarcode() async {
+    final barcode = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const BarcodeScannerScreen(),
+      ),
+    );
+
+    if (barcode == null) return;
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      // Fetch product data
+      final productData = await _productService.fetchProductData(barcode);
+
+      // Get packaging impact
+      final packagingImpact = _productService.estimatePackagingImpact(
+        productData['packaging'] as String,
+      );
+
+      // Build product info string
+      final productInfo = '''
+Product: ${productData['product_name']}
+Brand: ${productData['brands']}
+Packaging: ${productData['packaging']}
+Categories: ${productData['categories']}
+Packaging Impact: $packagingImpact
+''';
+
+      // Send to Gemini for environmental impact explanation
+      final prompt = '''
+Explain the environmental impact of this product in clear, structured text.
+
+Product Information:
+$productInfo
+
+Focus on:
+- Packaging sustainability
+- Material recyclability
+- Disposal difficulty
+- Environmental footprint
+
+Provide a concise, informative response.
+''';
+
+      final explanation = await _axisService.generateExplanation(prompt);
+
+      // Display result in chat
+      setState(() {
+        _messages.add(ChatMessage(
+          text: explanation,
+          isUser: false,
+          executedAction: true,
+        ));
+        _isLoading = false;
+      });
+
+      _scrollToBottom();
+    } catch (e) {
+      setState(() {
+        _messages.add(ChatMessage(
+          text: 'Error scanning barcode: $e',
           isUser: false,
         ));
         _isLoading = false;
@@ -279,6 +356,15 @@ Report submitted successfully.
           IconButton(
             onPressed: _isLoading ? null : _captureAndReport,
             icon: const Icon(Icons.camera_alt),
+            color: AppColors.primary,
+            style: IconButton.styleFrom(
+              backgroundColor: AppColors.primary.withOpacity(0.1),
+            ),
+          ),
+          const SizedBox(width: 8),
+          IconButton(
+            onPressed: _isLoading ? null : _scanBarcode,
+            icon: const Icon(Icons.qr_code_scanner),
             color: AppColors.primary,
             style: IconButton.styleFrom(
               backgroundColor: AppColors.primary.withOpacity(0.1),
