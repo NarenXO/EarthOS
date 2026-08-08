@@ -20,6 +20,7 @@ import '../../core/services/vision_service.dart';
 import '../../core/services/user_identity_service.dart';
 import '../../core/services/cleanup_verification_service.dart';
 import '../../core/services/carbon_engine.dart';
+import '../../core/services/sensitive_zone_service.dart';
 import 'services/report_service.dart';
 
 class ReportScreen extends StatefulWidget {
@@ -38,6 +39,7 @@ class _ReportScreenState extends State<ReportScreen>
   final ReportService _reportService = ReportService();
   final UserIdentityService _userIdentityService = UserIdentityService();
   final CleanupVerificationService _verificationService = CleanupVerificationService();
+  final SensitiveZoneService _sensitiveZoneService = SensitiveZoneService();
 
   File? _selectedImage;
   bool _isAnalyzing = false;
@@ -108,7 +110,29 @@ class _ReportScreenState extends State<ReportScreen>
       final result = await _visionService.classifyWaste(_selectedImage!);
 
       final wasteType = result['waste_type'] as String?;
-      final severity = result['severity'] as int?;
+      var severity = result['severity'] as int?;
+
+      final isSensitive = await _sensitiveZoneService.isNearSensitiveZone(
+        lat: _currentPosition!.latitude,
+        lng: _currentPosition!.longitude,
+      );
+
+      bool isSensitiveFlag = false;
+
+      if (isSensitive) {
+        isSensitiveFlag = true;
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Sensitive zone nearby. High environmental risk.'),
+            ),
+          );
+        }
+        severity = (severity ?? 1) + 1;
+        if (severity != null && severity > 5) {
+          severity = 5;
+        }
+      }
 
       final carbonImpact = CarbonEngine.calculateImpact(
         wasteType: wasteType ?? 'unknown',
@@ -127,6 +151,7 @@ class _ReportScreenState extends State<ReportScreen>
         aiClassification: wasteType,
         severity: severity,
         carbonEstimate: carbonImpact,
+        isSensitive: isSensitiveFlag,
       );
 
       if (mounted) {

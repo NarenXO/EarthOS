@@ -15,6 +15,7 @@ class ReportService {
     String? aiClassification,
     int? severity,
     double? carbonEstimate,
+    bool? isSensitive,
   }) async {
     await _supabase.from(_tableName).insert({
       'type': type,
@@ -26,6 +27,7 @@ class ReportService {
       if (aiClassification != null) 'ai_classification': aiClassification,
       if (severity != null) 'severity': severity,
       if (carbonEstimate != null) 'carbon_estimate': carbonEstimate,
+      if (isSensitive != null) 'is_sensitive': isSensitive,
     });
   }
 
