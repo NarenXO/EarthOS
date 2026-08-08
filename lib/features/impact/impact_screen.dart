@@ -13,7 +13,10 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:earthos/core/constants/app_colors.dart';
 import 'package:earthos/core/services/forest_service.dart';
+import 'package:earthos/core/services/risk_engine.dart';
 import 'package:earthos/features/report/services/report_service.dart';
+import 'package:earthos/features/axis/services/system_context_service.dart';
+import 'package:earthos/core/services/user_identity_service.dart';
 
 class ImpactScreen extends StatefulWidget {
   const ImpactScreen({super.key});
@@ -25,8 +28,12 @@ class ImpactScreen extends StatefulWidget {
 class _ImpactScreenState extends State<ImpactScreen> {
   final ReportService _reportService = ReportService();
   final ForestService _forestService = ForestService();
+  final SystemContextService _systemContextService = SystemContextService();
+  final UserIdentityService _userIdentityService = UserIdentityService();
   Map<String, dynamic>? _stats;
   Map<String, dynamic>? _forestAlerts;
+  Map<String, dynamic>? _systemContext;
+  double? _riskScore;
   bool _isLoading = true;
   Position? _currentPosition;
 
@@ -36,6 +43,38 @@ class _ImpactScreenState extends State<ImpactScreen> {
     _fetchStats();
     _initializeLocation();
     _fetchForestAlerts();
+    _fetchSystemContext();
+  }
+
+  Future<void> _fetchSystemContext() async {
+    try {
+      final user = await _userIdentityService.getOrCreateUser();
+      final context = await _systemContextService.fetchSystemContext(user.id);
+      
+      final nearbyOpenReports = context['nearbyOpenReports'] as int? ?? 0;
+      final forestAlerts = context['forestAlerts'] as Map<String, dynamic>? ?? {};
+      final highForestAlerts = forestAlerts['highConfidence'] as int? ?? 0;
+      
+      // Count sensitive reports from global stats
+      final sensitiveReports = _stats?['totalSensitiveReports'] as int? ?? 0;
+      
+      // Calculate days since last cleanup (default to 30 if no recent activity)
+      final daysSinceLastCleanup = 30; // Simplified for now
+      
+      final score = RiskEngine.calculateRiskScore(
+        nearbyOpenReports: nearbyOpenReports,
+        sensitiveReports: sensitiveReports,
+        highForestAlerts: highForestAlerts,
+        daysSinceLastCleanup: daysSinceLastCleanup,
+      );
+
+      setState(() {
+        _systemContext = context;
+        _riskScore = score;
+      });
+    } catch (e) {
+      // Silently fail, keep default values
+    }
   }
 
   Future<void> _initializeLocation() async {
@@ -108,6 +147,18 @@ class _ImpactScreenState extends State<ImpactScreen> {
             _isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : _buildImpactGrid(),
+
+            const SizedBox(height: 30),
+
+            // ===============================
+            // ENVIRONMENTAL RISK INDEX
+            // ===============================
+            Text(
+              "Environmental Risk Index",
+              style: Theme.of(context).textTheme.headlineMedium,
+            ),
+            const SizedBox(height: 16),
+            _buildRiskIndexCard(),
 
             const SizedBox(height: 30),
 
@@ -379,6 +430,106 @@ class _ImpactScreenState extends State<ImpactScreen> {
         ],
       ),
     );
+  }
+
+  // =========================================================
+  // RISK INDEX CARD
+  // =========================================================
+  Widget _buildRiskIndexCard() {
+    final score = _riskScore ?? 0.0;
+    final status = RiskEngine.getRiskStatus(score);
+    
+    Color statusColor;
+    if (status == 'Low') {
+      statusColor = Colors.green;
+    } else if (status == 'Moderate') {
+      statusColor = Colors.orange;
+    } else {
+      statusColor = Colors.red;
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: _cardDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text(
+                "Environmental Risk Index",
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: statusColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: statusColor),
+                ),
+                child: Text(
+                  status,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: statusColor,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          Center(
+            child: Column(
+              children: [
+                Text(
+                  score.toStringAsFixed(0),
+                  style: TextStyle(
+                    fontSize: 48,
+                    fontWeight: FontWeight.w800,
+                    color: statusColor,
+                  ),
+                ),
+                const Text(
+                  '/ 100',
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            _getRiskDescription(status),
+            style: const TextStyle(
+              fontSize: 14,
+              color: AppColors.textSecondary,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _getRiskDescription(String status) {
+    switch (status) {
+      case 'Low':
+        return 'Environmental conditions in your area are stable. Continue monitoring.';
+      case 'Moderate':
+        return 'Some environmental risks detected. Consider addressing nearby cleanup reports.';
+      case 'High':
+        return 'Significant environmental risks present. Immediate action recommended.';
+      default:
+        return 'Unable to determine risk status.';
+    }
   }
 
   BoxDecoration _cardDecoration() {
