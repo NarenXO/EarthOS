@@ -14,6 +14,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:earthos/core/constants/app_colors.dart';
 import 'package:earthos/core/services/forest_service.dart';
 import 'package:earthos/core/services/risk_engine.dart';
+import 'package:earthos/core/services/trend_service.dart';
 import 'package:earthos/features/report/services/report_service.dart';
 import 'package:earthos/features/axis/services/system_context_service.dart';
 import 'package:earthos/core/services/user_identity_service.dart';
@@ -30,9 +31,11 @@ class _ImpactScreenState extends State<ImpactScreen> {
   final ForestService _forestService = ForestService();
   final SystemContextService _systemContextService = SystemContextService();
   final UserIdentityService _userIdentityService = UserIdentityService();
+  final TrendService _trendService = TrendService();
   Map<String, dynamic>? _stats;
   Map<String, dynamic>? _forestAlerts;
   Map<String, dynamic>? _systemContext;
+  Map<String, dynamic>? _trends;
   double? _riskScore;
   bool _isLoading = true;
   Position? _currentPosition;
@@ -44,6 +47,28 @@ class _ImpactScreenState extends State<ImpactScreen> {
     _initializeLocation();
     _fetchForestAlerts();
     _fetchSystemContext();
+    _fetchTrends();
+  }
+
+  Future<void> _fetchTrends() async {
+    try {
+      final reports = await _reportService.fetchReports();
+      final reportsJson = reports.map((r) => r.toJson()).toList();
+      
+      // Mock forest alerts data for trend calculation
+      final forestAlertsJson = <Map<String, dynamic>>[];
+      
+      final trends = await _trendService.calculateTrends(
+        reports: reportsJson,
+        forestAlerts: forestAlertsJson,
+      );
+
+      setState(() {
+        _trends = trends;
+      });
+    } catch (e) {
+      // Silently fail, keep default values
+    }
   }
 
   Future<void> _fetchSystemContext() async {
@@ -159,6 +184,18 @@ class _ImpactScreenState extends State<ImpactScreen> {
             ),
             const SizedBox(height: 16),
             _buildRiskIndexCard(),
+
+            const SizedBox(height: 30),
+
+            // ===============================
+            // ENVIRONMENTAL TRENDS
+            // ===============================
+            Text(
+              "📊 Environmental Trends",
+              style: Theme.of(context).textTheme.headlineMedium,
+            ),
+            const SizedBox(height: 16),
+            _buildTrendsCard(),
 
             const SizedBox(height: 30),
 
@@ -532,6 +569,42 @@ class _ImpactScreenState extends State<ImpactScreen> {
     }
   }
 
+  // =========================================================
+  // TRENDS CARD
+  // =========================================================
+  Widget _buildTrendsCard() {
+    final weeklyReportChange = _trends?['weeklyReportChange'] as double? ?? 0.0;
+    final cleanupEfficiencyChange = _trends?['cleanupEfficiencyChange'] as double? ?? 0.0;
+    final forestTrendChange = _trends?['forestTrendChange'] as double? ?? 0.0;
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: _cardDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _TrendItem(
+            label: 'Waste Reporting Trend',
+            change: weeklyReportChange,
+            isGood: weeklyReportChange < 0,
+          ),
+          const SizedBox(height: 12),
+          _TrendItem(
+            label: 'Cleanup Efficiency Trend',
+            change: cleanupEfficiencyChange,
+            isGood: cleanupEfficiencyChange > 0,
+          ),
+          const SizedBox(height: 12),
+          _TrendItem(
+            label: 'Forest Alert Trend',
+            change: forestTrendChange,
+            isGood: forestTrendChange < 0,
+          ),
+        ],
+      ),
+    );
+  }
+
   BoxDecoration _cardDecoration() {
     return BoxDecoration(
       color: AppColors.card,
@@ -582,6 +655,55 @@ class _ImpactCard extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+// =============================================================
+// TREND ITEM WIDGET
+// =============================================================
+class _TrendItem extends StatelessWidget {
+  final String label;
+  final double change;
+  final bool isGood;
+
+  const _TrendItem({
+    required this.label,
+    required this.change,
+    required this.isGood,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isGood ? Colors.green : Colors.red;
+    final icon = change >= 0 ? Icons.trending_up : Icons.trending_down;
+    
+    return Row(
+      children: [
+        Icon(
+          icon,
+          color: color,
+          size: 20,
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            label,
+            style: const TextStyle(
+              fontSize: 14,
+              color: AppColors.textPrimary,
+            ),
+          ),
+        ),
+        Text(
+          '${change >= 0 ? '+' : ''}${change.toStringAsFixed(1)}%',
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: color,
+          ),
+        ),
+      ],
     );
   }
 }
