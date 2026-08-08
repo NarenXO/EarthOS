@@ -47,4 +47,15 @@ class ReportService {
             .map((json) => Report.fromJson(json as Map<String, dynamic>))
             .toList());
   }
+
+  Future<void> verifyReport({
+    required String reportId,
+    required String photoAfter,
+  }) async {
+    await _supabase.from(_tableName).update({
+      'status': 'verified',
+      'photo_after': photoAfter,
+      'verified_at': DateTime.now().toIso8601String(),
+    }).eq('id', reportId);
+  }
 }

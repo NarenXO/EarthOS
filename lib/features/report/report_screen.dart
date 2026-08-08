@@ -18,6 +18,7 @@ import '../../core/config/app_config.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/services/vision_service.dart';
 import '../../core/services/user_identity_service.dart';
+import '../../core/services/cleanup_verification_service.dart';
 import 'services/report_service.dart';
 
 class ReportScreen extends StatefulWidget {
@@ -35,10 +36,15 @@ class _ReportScreenState extends State<ReportScreen>
   final VisionService _visionService = VisionService();
   final ReportService _reportService = ReportService();
   final UserIdentityService _userIdentityService = UserIdentityService();
+  final CleanupVerificationService _verificationService = CleanupVerificationService();
 
   File? _selectedImage;
   bool _isAnalyzing = false;
+  bool _isVerifying = false;
+  bool _isVerificationMode = false;
   Position? _currentPosition;
+  String? _reportIdToVerify;
+  File? _beforeImageForVerification;
 
   @override
   void initState() {
@@ -142,6 +148,100 @@ class _ReportScreenState extends State<ReportScreen>
     }
   }
 
+  Future<void> _pickAfterImage() async {
+    final XFile? image = await _imagePicker.pickImage(
+      source: ImageSource.camera,
+      imageQuality: 80,
+    );
+
+    if (image != null) {
+      setState(() {
+        _selectedImage = File(image.path);
+      });
+      await _verifyCleanup();
+    }
+  }
+
+  Future<void> _verifyCleanup() async {
+    if (_selectedImage == null || _beforeImageForVerification == null) return;
+
+    setState(() {
+      _isVerifying = true;
+    });
+
+    try {
+      final isCleaned = await _verificationService.verifyCleanup(
+        _beforeImageForVerification!,
+        _selectedImage!,
+      );
+
+      if (isCleaned && _reportIdToVerify != null) {
+        await _reportService.verifyReport(
+          reportId: _reportIdToVerify!,
+          photoAfter: _selectedImage!.path,
+        );
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Cleanup verified successfully'),
+            ),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Verification failed: cleanup not confirmed'),
+            ),
+          );
+        }
+      }
+
+      setState(() {
+        _selectedImage = null;
+        _beforeImageForVerification = null;
+        _reportIdToVerify = null;
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Verification error: $e'),
+          ),
+        );
+      }
+    } finally {
+      setState(() {
+        _isVerifying = false;
+      });
+    }
+  }
+
+  void _startVerificationMode(String reportId, File beforeImage) {
+    setState(() {
+      _reportIdToVerify = reportId;
+      _beforeImageForVerification = beforeImage;
+      _isVerificationMode = true;
+    });
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Verification mode: Take after photo'),
+        ),
+      );
+    }
+  }
+
+  void _exitVerificationMode() {
+    setState(() {
+      _isVerificationMode = false;
+      _reportIdToVerify = null;
+      _beforeImageForVerification = null;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -211,6 +311,29 @@ class _ReportScreenState extends State<ReportScreen>
                     SizedBox(height: 16),
                     Text(
                       'Analyzing waste...',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+          // ===============================
+          // VERIFICATION LOADING OVERLAY
+          // ===============================
+          if (_isVerifying)
+            Container(
+              color: Colors.black.withValues(alpha: 0.7),
+              child: const Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CircularProgressIndicator(
+                      valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+                    ),
+                    SizedBox(height: 16),
+                    Text(
+                      'Verifying cleanup...',
                       style: TextStyle(color: Colors.white),
                     ),
                   ],
@@ -307,9 +430,15 @@ class _ReportScreenState extends State<ReportScreen>
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    _buildInputButton(Icons.camera_alt_outlined, onTap: _pickImage),
+                    _buildInputButton(
+                      Icons.camera_alt_outlined,
+                      onTap: _isVerificationMode ? _pickAfterImage : _pickImage,
+                    ),
                     _buildInputButton(Icons.keyboard_outlined),
-                    _buildInputButton(Icons.mic_none),
+                    if (_isVerificationMode)
+                      _buildInputButton(Icons.close, onTap: _exitVerificationMode)
+                    else
+                      _buildInputButton(Icons.mic_none),
                   ],
                 ),
               ],
