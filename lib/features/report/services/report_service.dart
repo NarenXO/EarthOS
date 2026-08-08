@@ -106,4 +106,36 @@ class ReportService {
       'totalVerifiedCarbon': totalVerifiedCarbon,
     };
   }
+
+  Future<List<Map<String, dynamic>>> fetchLeaderboard() async {
+    final allReports = await fetchReports();
+    final verifiedReports = allReports.where((r) => r.status == 'verified').toList();
+
+    final Map<String, Map<String, dynamic>> userMap = {};
+
+    for (final report in verifiedReports) {
+      final userId = report.createdBy;
+      final userName = report.createdByName;
+
+      if (!userMap.containsKey(userId)) {
+        userMap[userId] = {
+          'userId': userId,
+          'userName': userName,
+          'carbonDiverted': 0.0,
+          'verifiedCount': 0,
+        };
+      }
+
+      userMap[userId]!['carbonDiverted'] = 
+          (userMap[userId]!['carbonDiverted'] as double) + (report.carbonEstimate ?? 0.0);
+      userMap[userId]!['verifiedCount'] = 
+          (userMap[userId]!['verifiedCount'] as int) + 1;
+    }
+
+    final leaderboard = userMap.values.toList();
+    leaderboard.sort((a, b) => 
+        (b['carbonDiverted'] as double).compareTo(a['carbonDiverted'] as double));
+
+    return leaderboard;
+  }
 }

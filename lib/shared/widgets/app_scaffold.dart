@@ -11,6 +11,7 @@ import 'package:earthos/features/explore/explore_screen.dart';
 import 'package:earthos/features/report/report_screen.dart';
 import 'package:earthos/features/axis/axis_screen.dart';
 import 'package:earthos/features/impact/impact_screen.dart';
+import 'package:earthos/features/community/leaderboard_screen.dart';
 import 'package:earthos/features/profile/profile_screen.dart';
 
 class AppScaffold extends StatefulWidget {
@@ -29,6 +30,7 @@ class _AppScaffoldState extends State<AppScaffold> {
     ReportScreen(),
     AxisScreen(),
     ImpactScreen(),
+    LeaderboardScreen(),
     ProfileScreen(),
   ];
 
@@ -83,7 +85,8 @@ class _AppScaffoldState extends State<AppScaffold> {
           Expanded(child: _dockItem(Icons.blur_circular, 1)),
           Expanded(child: _dockItem(Icons.smart_toy, 2)),
           Expanded(child: _dockItem(Icons.insights, 3)),
-          Expanded(child: _dockItem(Icons.person, 4)),
+          Expanded(child: _dockItem(Icons.leaderboard, 4)),
+          Expanded(child: _dockItem(Icons.person, 5)),
         ],
       ),
     );
