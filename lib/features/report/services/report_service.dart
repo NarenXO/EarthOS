@@ -81,4 +81,29 @@ class ReportService {
       'totalSensitiveReports': totalSensitiveReports,
     };
   }
+
+  Future<Map<String, dynamic>> fetchUserImpact(String userId) async {
+    final allReports = await fetchReports();
+    final userReports = allReports.where((r) => r.createdBy == userId).toList();
+
+    final totalReports = userReports.length;
+    final verifiedReports = userReports.where((r) => r.status == 'verified').length;
+    final totalCarbonImpact = userReports.fold<double>(
+      0.0,
+      (sum, report) => sum + (report.carbonEstimate ?? 0.0),
+    );
+    final totalVerifiedCarbon = userReports
+        .where((r) => r.status == 'verified')
+        .fold<double>(
+          0.0,
+          (sum, report) => sum + (report.carbonEstimate ?? 0.0),
+        );
+
+    return {
+      'totalReports': totalReports,
+      'verifiedReports': verifiedReports,
+      'totalCarbonImpact': totalCarbonImpact,
+      'totalVerifiedCarbon': totalVerifiedCarbon,
+    };
+  }
 }
