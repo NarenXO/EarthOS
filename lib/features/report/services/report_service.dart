@@ -149,4 +149,36 @@ class ReportService {
   Future<void> joinEvent(String eventId) async {
     await _supabase.rpc('increment_participants', params: {'event_id': eventId});
   }
+
+  Future<List<Report>> fetchUpcomingEvents() async {
+    final now = DateTime.now().toIso8601String();
+    final response = await _supabase
+        .from(_tableName)
+        .select()
+        .or('type.eq.cleanup_event,type.eq.meetup')
+        .gte('event_date', now)
+        .order('event_date', ascending: true);
+
+    return (response as List<dynamic>)
+        .map((json) => Report.fromJson(json as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<void> joinEventWithName(String eventId, String userName) async {
+    // Try to append to participants array first
+    try {
+      await _supabase.rpc(
+        'append_participant',
+        params: {
+          'event_id': eventId,
+          'user_name': userName,
+        },
+      );
+    } catch (e) {
+      // Fallback to incrementing participants_count
+      await _supabase.from(_tableName).update({
+        'participants_count': _supabase.raw('participants_count + 1'),
+      }).eq('id', eventId);
+    }
+  }
 }

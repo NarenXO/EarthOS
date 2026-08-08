@@ -18,6 +18,10 @@ class Report {
   final String? description;
   final String? eventDate;
   final int? participantsCount;
+  final String? eventType;
+  final int? maxParticipants;
+  final String? venue;
+  final List<String>? participants;
 
   Report({
     required this.id,
@@ -39,6 +43,10 @@ class Report {
     this.description,
     this.eventDate,
     this.participantsCount,
+    this.eventType,
+    this.maxParticipants,
+    this.venue,
+    this.participants,
   });
 
   factory Report.fromJson(Map<String, dynamic> json) {
@@ -64,6 +72,12 @@ class Report {
       description: json['description'] as String?,
       eventDate: json['event_date'] as String?,
       participantsCount: json['participants_count'] as int?,
+      eventType: json['event_type'] as String?,
+      maxParticipants: json['max_participants'] as int?,
+      venue: json['venue'] as String?,
+      participants: json['participants'] != null 
+          ? (json['participants'] as List).map((e) => e as String).toList()
+          : null,
     );
   }
 
@@ -88,6 +102,10 @@ class Report {
       'description': description,
       'event_date': eventDate,
       'participants_count': participantsCount,
+      'event_type': eventType,
+      'max_participants': maxParticipants,
+      'venue': venue,
+      'participants': participants,
     };
   }
 }
