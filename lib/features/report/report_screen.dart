@@ -19,6 +19,7 @@ import '../../core/constants/app_colors.dart';
 import '../../core/services/vision_service.dart';
 import '../../core/services/user_identity_service.dart';
 import '../../core/services/cleanup_verification_service.dart';
+import '../../core/services/carbon_engine.dart';
 import 'services/report_service.dart';
 
 class ReportScreen extends StatefulWidget {
@@ -109,6 +110,11 @@ class _ReportScreenState extends State<ReportScreen>
       final wasteType = result['waste_type'] as String?;
       final severity = result['severity'] as int?;
 
+      final carbonImpact = CarbonEngine.calculateImpact(
+        wasteType: wasteType ?? 'unknown',
+        severity: severity ?? 1,
+      );
+
       final user = await _userIdentityService.getOrCreateUser();
 
       await _reportService.createReport(
@@ -120,12 +126,13 @@ class _ReportScreenState extends State<ReportScreen>
         photoBefore: _selectedImage!.path,
         aiClassification: wasteType,
         severity: severity,
+        carbonEstimate: carbonImpact,
       );
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Report submitted successfully'),
+          SnackBar(
+            content: Text('Waste classified. Estimated impact: ${carbonImpact.toStringAsFixed(1)} kg CO2e'),
           ),
         );
       }

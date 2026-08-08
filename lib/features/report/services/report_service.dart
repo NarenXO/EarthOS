@@ -14,6 +14,7 @@ class ReportService {
     String? photoBefore,
     String? aiClassification,
     int? severity,
+    double? carbonEstimate,
   }) async {
     await _supabase.from(_tableName).insert({
       'type': type,
@@ -24,6 +25,7 @@ class ReportService {
       if (photoBefore != null) 'photo_before': photoBefore,
       if (aiClassification != null) 'ai_classification': aiClassification,
       if (severity != null) 'severity': severity,
+      if (carbonEstimate != null) 'carbon_estimate': carbonEstimate,
     });
   }
 
