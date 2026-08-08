@@ -77,17 +77,13 @@ class _AppScaffoldState extends State<AppScaffold> {
         boxShadow: AppColors.softGlow,
       ),
       child: Row(
-        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
-          _dockItem(Icons.public, 0),
-          const SizedBox(width: 32),
-          _dockItem(Icons.blur_circular, 1),
-          const SizedBox(width: 32),
-          _dockItem(Icons.smart_toy, 2),
-          const SizedBox(width: 32),
-          _dockItem(Icons.insights, 3),
-          const SizedBox(width: 32),
-          _dockItem(Icons.person, 4),
+          Expanded(child: _dockItem(Icons.public, 0)),
+          Expanded(child: _dockItem(Icons.blur_circular, 1)),
+          Expanded(child: _dockItem(Icons.smart_toy, 2)),
+          Expanded(child: _dockItem(Icons.insights, 3)),
+          Expanded(child: _dockItem(Icons.person, 4)),
         ],
       ),
     );
