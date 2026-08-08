@@ -62,4 +62,23 @@ class ReportService {
       'verified_at': DateTime.now().toIso8601String(),
     }).eq('id', reportId);
   }
+
+  Future<Map<String, dynamic>> fetchImpactStats() async {
+    final reports = await fetchReports();
+
+    final totalReports = reports.length;
+    final verifiedReports = reports.where((r) => r.status == 'verified').length;
+    final totalCarbonImpact = reports.fold<double>(
+      0.0,
+      (sum, report) => sum + (report.carbonEstimate ?? 0.0),
+    );
+    final totalSensitiveReports = reports.where((r) => r.isSensitive == true).length;
+
+    return {
+      'totalReports': totalReports,
+      'verifiedReports': verifiedReports,
+      'totalCarbonImpact': totalCarbonImpact,
+      'totalSensitiveReports': totalSensitiveReports,
+    };
+  }
 }

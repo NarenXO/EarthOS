@@ -125,6 +125,7 @@ class _ReportScreenState extends State<ReportScreen>
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('Sensitive zone nearby. High environmental risk.'),
+              duration: Duration(seconds: 2),
             ),
           );
         }
@@ -158,6 +159,7 @@ class _ReportScreenState extends State<ReportScreen>
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Waste classified. Estimated impact: ${carbonImpact.toStringAsFixed(1)} kg CO2e'),
+            duration: const Duration(seconds: 2),
           ),
         );
       }
@@ -170,6 +172,7 @@ class _ReportScreenState extends State<ReportScreen>
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error: $e'),
+            duration: const Duration(seconds: 2),
           ),
         );
       }
@@ -217,6 +220,7 @@ class _ReportScreenState extends State<ReportScreen>
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('Cleanup verified successfully'),
+              duration: Duration(seconds: 2),
             ),
           );
         }
@@ -225,6 +229,7 @@ class _ReportScreenState extends State<ReportScreen>
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('Verification failed: cleanup not confirmed'),
+              duration: Duration(seconds: 2),
             ),
           );
         }
@@ -240,6 +245,7 @@ class _ReportScreenState extends State<ReportScreen>
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Verification error: $e'),
+            duration: const Duration(seconds: 2),
           ),
         );
       }
@@ -261,6 +267,7 @@ class _ReportScreenState extends State<ReportScreen>
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Verification mode: Take after photo'),
+          duration: Duration(seconds: 2),
         ),
       );
     }

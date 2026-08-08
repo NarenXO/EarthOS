@@ -12,7 +12,6 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 
 import '../../core/constants/app_colors.dart';
-import '../../core/services/sensitive_zone_service.dart';
 import '../report/services/report_service.dart';
 import '../report/models/report_model.dart';
 
@@ -129,63 +128,6 @@ class _ExploreScreenState extends State<ExploreScreen> {
     });
   }
 
-  Future<void> _insertTestReport() async {
-    try {
-      await _reportService.createReport(
-        type: 'dumping',
-        lat: 12.9716,
-        lng: 77.5946,
-        createdBy: 'test-user-id',
-        createdByName: 'Test User',
-      );
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Test report inserted successfully'),
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Insert failed: $e'),
-          ),
-        );
-      }
-    }
-  }
-
-  Future<void> _testSensitiveZone() async {
-    try {
-      final result = await SensitiveZoneService().isNearSensitiveZone(
-        lat: 28.6139,
-        lng: 77.2090,
-      );
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              result
-                  ? 'Sensitive zone detected ✅'
-                  : 'No sensitive zone detected ❌',
-            ),
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-          ),
-        );
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -216,46 +158,6 @@ class _ExploreScreenState extends State<ExploreScreen> {
             compassEnabled: true,
             tiltGesturesEnabled: true,
             zoomControlsEnabled: false,
-          ),
-          Positioned(
-            top: 50,
-            right: 20,
-            child: GestureDetector(
-              onTap: _insertTestReport,
-              child: Container(
-                height: 48,
-                width: 48,
-                decoration: BoxDecoration(
-                  color: AppColors.card,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: AppColors.primary),
-                ),
-                child: const Icon(
-                  Icons.add,
-                  color: AppColors.primary,
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            top: 50,
-            right: 80,
-            child: GestureDetector(
-              onTap: _testSensitiveZone,
-              child: Container(
-                height: 48,
-                width: 48,
-                decoration: BoxDecoration(
-                  color: AppColors.card,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: AppColors.primary),
-                ),
-                child: const Icon(
-                  Icons.shield,
-                  color: AppColors.primary,
-                ),
-              ),
-            ),
           ),
         ],
       ),

@@ -7,6 +7,7 @@ class Report {
   final String? aiClassification;
   final int? severity;
   final double? carbonEstimate;
+  final bool? isSensitive;
   final double lat;
   final double lng;
   final String createdBy;
@@ -23,6 +24,7 @@ class Report {
     this.aiClassification,
     this.severity,
     this.carbonEstimate,
+    this.isSensitive,
     required this.lat,
     required this.lng,
     required this.createdBy,
@@ -41,6 +43,7 @@ class Report {
       aiClassification: json['ai_classification'] as String?,
       severity: json['severity'] as int?,
       carbonEstimate: json['carbon_estimate'] as double?,
+      isSensitive: json['is_sensitive'] as bool?,
       lat: json['lat'] as double,
       lng: json['lng'] as double,
       createdBy: json['created_by'] as String,
@@ -62,6 +65,7 @@ class Report {
       'ai_classification': aiClassification,
       'severity': severity,
       'carbon_estimate': carbonEstimate,
+      'is_sensitive': isSensitive,
       'lat': lat,
       'lng': lng,
       'created_by': createdBy,

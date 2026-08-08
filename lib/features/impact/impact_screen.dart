@@ -11,9 +11,39 @@
 
 import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
+import '../report/services/report_service.dart';
 
-class ImpactScreen extends StatelessWidget {
+class ImpactScreen extends StatefulWidget {
   const ImpactScreen({super.key});
+
+  @override
+  State<ImpactScreen> createState() => _ImpactScreenState();
+}
+
+class _ImpactScreenState extends State<ImpactScreen> {
+  final ReportService _reportService = ReportService();
+  Map<String, dynamic>? _stats;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchStats();
+  }
+
+  Future<void> _fetchStats() async {
+    try {
+      final stats = await _reportService.fetchImpactStats();
+      setState(() {
+        _stats = stats;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -36,7 +66,9 @@ class ImpactScreen extends StatelessWidget {
               style: Theme.of(context).textTheme.headlineMedium,
             ),
             const SizedBox(height: 16),
-            _buildImpactGrid(),
+            _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : _buildImpactGrid(),
 
             const SizedBox(height: 30),
 
@@ -85,6 +117,11 @@ class ImpactScreen extends StatelessWidget {
   // GLOBAL IMPACT GRID
   // =========================================================
   Widget _buildImpactGrid() {
+    final totalReports = _stats?['totalReports'] ?? 0;
+    final verifiedReports = _stats?['verifiedReports'] ?? 0;
+    final totalCarbonImpact = _stats?['totalCarbonImpact'] ?? 0.0;
+    final totalSensitiveReports = _stats?['totalSensitiveReports'] ?? 0;
+
     return GridView.count(
       crossAxisCount: 2,
       shrinkWrap: true,
@@ -92,11 +129,20 @@ class ImpactScreen extends StatelessWidget {
       mainAxisSpacing: 16,
       crossAxisSpacing: 16,
       childAspectRatio: 1.2,
-      children: const [
-        _ImpactCard(title: "Reports", value: "124"),
-        _ImpactCard(title: "CO₂e Prevented", value: "2.4T"),
-        _ImpactCard(title: "Active Bounties", value: "18"),
-        _ImpactCard(title: "Sensitive Zones", value: "7"),
+      children: [
+        _ImpactCard(title: "Total Reports", value: totalReports.toString()),
+        _ImpactCard(
+          title: "Verified Cleanups",
+          value: verifiedReports.toString(),
+        ),
+        _ImpactCard(
+          title: "Total CO₂ Impact (kg)",
+          value: totalCarbonImpact.toStringAsFixed(1),
+        ),
+        _ImpactCard(
+          title: "Sensitive Zone Incidents",
+          value: totalSensitiveReports.toString(),
+        ),
       ],
     );
   }
