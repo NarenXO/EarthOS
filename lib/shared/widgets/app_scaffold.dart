@@ -26,8 +26,8 @@ class _AppScaffoldState extends State<AppScaffold> {
 
   final List<Widget> _screens = const [
     ExploreScreen(),
-    AxisScreen(),
     ImpactScreen(),
+    AxisScreen(),
     LeaderboardScreen(),
     ProfileScreen(),
   ];
