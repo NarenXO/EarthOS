@@ -412,8 +412,11 @@ Report submitted successfully.
           // Avatar Area
           Expanded(
             flex: 2,
-            child: Center(
-              child: AxisAvatar(state: _axisState),
+            child: IgnorePointer(
+              ignoring: true,
+              child: Center(
+                child: AxisAvatar(state: _axisState),
+              ),
             ),
           ),
           // Command Chips
