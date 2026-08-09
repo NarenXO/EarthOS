@@ -36,3 +36,20 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+afterEvaluate {
+    tasks.register("copyApkToFlutterOutput") {
+        dependsOn("assembleDebug")
+        doLast {
+            val sourceFile = file("$buildDir/outputs/apk/debug/app-debug.apk")
+            val targetDir = file("$projectDir/../../build/app/outputs/flutter-apk")
+            targetDir.mkdirs()
+            val targetFile = file("$targetDir/app-debug.apk")
+            sourceFile.copyTo(targetFile, overwrite = true)
+        }
+    }
+
+    tasks.named("assembleDebug") {
+        finalizedBy("copyApkToFlutterOutput")
+    }
+}
