@@ -12,6 +12,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 
 import 'package:earthos/core/constants/app_colors.dart';
@@ -28,6 +29,7 @@ import 'package:earthos/features/axis/models/axis_response.dart';
 import 'package:earthos/features/axis/services/product_service.dart';
 import 'package:earthos/features/axis/services/system_context_service.dart';
 import 'package:earthos/features/axis/widgets/axis_avatar.dart';
+import 'package:earthos/features/axis/widgets/mlkit_barcode_scanner.dart';
 
 
 class AxisScreen extends StatefulWidget {
@@ -50,12 +52,14 @@ class _AxisScreenState extends State<AxisScreen> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
 
+  late stt.SpeechToText _speech;
+  bool _isListening = false;
 
   final List<ChatMessage> _messages = [];
   bool _isLoading = false;
   Position? _currentPosition;
   AxisState _axisState = AxisState.idle;
-  
+
   bool _showKeypad = false;
 
 
@@ -63,13 +67,55 @@ class _AxisScreenState extends State<AxisScreen> {
 void initState() {
   super.initState();
 
+  _speech = stt.SpeechToText();
   _initializeLocation();
   _loadSystemContext();
 }
 
   @override
   void dispose() {
+    _speech.stop();
     super.dispose();
+  }
+
+  Future<void> _toggleListening() async {
+    if (_isListening) {
+      await _speech.stop();
+      setState(() {
+        _isListening = false;
+        _axisState = AxisState.idle;
+      });
+    } else {
+      bool available = await _speech.initialize();
+      if (available) {
+        setState(() {
+          _isListening = true;
+          _axisState = AxisState.listening;
+        });
+
+        _speech.listen(
+          onResult: (result) {
+            setState(() {
+              _messageController.text = result.recognizedWords;
+            });
+          },
+        );
+      }
+    }
+  }
+
+  Future<void> _scanBarcode() async {
+    final barcode = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const MLKitBarcodeScanner(),
+      ),
+    );
+
+    if (barcode != null) {
+      _messageController.text = 'Scan barcode: $barcode';
+      _sendMessage();
+    }
   }
 
   void _executePredefinedCommand(String command) {
@@ -438,6 +484,26 @@ Report submitted successfully.
               IconButton(
                 onPressed: _isLoading ? null : _captureAndReport,
                 icon: const Icon(Icons.camera_alt),
+                color: AppColors.primary,
+                style: IconButton.styleFrom(
+                  backgroundColor: AppColors.primary.withOpacity(0.1),
+                ),
+              ),
+              const SizedBox(width: 8),
+              // Mic button
+              IconButton(
+                onPressed: _isLoading ? null : _toggleListening,
+                icon: Icon(_isListening ? Icons.mic : Icons.mic_none),
+                color: _isListening ? Colors.red : AppColors.primary,
+                style: IconButton.styleFrom(
+                  backgroundColor: (_isListening ? Colors.red : AppColors.primary).withOpacity(0.1),
+                ),
+              ),
+              const SizedBox(width: 8),
+              // Barcode button
+              IconButton(
+                onPressed: _isLoading ? null : _scanBarcode,
+                icon: const Icon(Icons.qr_code_scanner),
                 color: AppColors.primary,
                 style: IconButton.styleFrom(
                   backgroundColor: AppColors.primary.withOpacity(0.1),
