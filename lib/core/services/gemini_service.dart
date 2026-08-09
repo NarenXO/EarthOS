@@ -6,7 +6,7 @@ class GeminiService {
 
   Future<String> generateText(String prompt) async {
     final url = Uri.parse(
-      "https://api.generativeai.google.com/v1/models/gemini-1.5-flash:generateContent"
+      "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent"
     );
 
     final response = await http.post(
