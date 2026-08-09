@@ -13,7 +13,7 @@ class GeminiService {
       url,
       headers: {
         "Content-Type": "application/json",
-        "Authorization": "Bearer ${AppConfig.geminiApiKey}",
+        "x-goog-api-key": AppConfig.geminiApiKey,
       },
       body: jsonEncode({
         "contents": [
