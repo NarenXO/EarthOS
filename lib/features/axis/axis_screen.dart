@@ -98,6 +98,11 @@ void initState() {
             setState(() {
               _messageController.text = result.recognizedWords;
             });
+
+            if (result.finalResult) {
+              _toggleListening();
+              _sendMessage();
+            }
           },
         );
       }
@@ -465,20 +470,21 @@ Report submitted successfully.
   }
 
   Widget _buildInteractionDock() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF141a24),
-        border: Border(
-          top: BorderSide(color: AppColors.border),
+    return SafeArea(
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: const Color(0xFF141a24),
+          border: Border(
+            top: BorderSide(color: AppColors.border),
+          ),
         ),
-      ),
-      child: Column(
-        children: [
-          // Keypad (shown when toggled)
-          if (_showKeypad) _buildKeypad(),
-          // Input row
-          Row(
+        child: Column(
+          children: [
+            // Keypad (shown when toggled)
+            if (_showKeypad) _buildKeypad(),
+            // Input row
+            Row(
             children: [
               // Camera button
               IconButton(
@@ -577,6 +583,7 @@ Report submitted successfully.
             ],
           ),
         ],
+      ),
       ),
     );
   }
