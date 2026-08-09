@@ -8,13 +8,12 @@
 | Full-screen AI assistant with tool-calling capability
 |--------------------------------------------------------------------------
 */
-
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:mobile_scanner/mobile_scanner.dart';
-import 'package:speech_to_text/speech_to_text.dart';
-import 'package:flutter_tts/flutter_tts.dart';
+
+
 import 'package:earthos/core/constants/app_colors.dart';
 import 'package:earthos/core/services/user_identity_service.dart';
 import 'package:earthos/core/services/vision_service.dart';
@@ -28,8 +27,8 @@ import 'package:earthos/features/axis/services/axis_service.dart';
 import 'package:earthos/features/axis/models/axis_response.dart';
 import 'package:earthos/features/axis/services/product_service.dart';
 import 'package:earthos/features/axis/services/system_context_service.dart';
-import 'package:earthos/features/axis/widgets/barcode_scanner_screen.dart';
 import 'package:earthos/features/axis/widgets/axis_avatar.dart';
+
 
 class AxisScreen extends StatefulWidget {
   const AxisScreen({super.key});
@@ -51,75 +50,26 @@ class _AxisScreenState extends State<AxisScreen> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
 
-  final SpeechToText _speechToText = SpeechToText();
-  final FlutterTts _flutterTts = FlutterTts();
 
   final List<ChatMessage> _messages = [];
   bool _isLoading = false;
   Position? _currentPosition;
   AxisState _axisState = AxisState.idle;
-  bool _isListening = false;
+  
   bool _showKeypad = false;
 
-  @override
-  void initState() {
-    super.initState();
-    _initializeLocation();
-    _loadSystemContext();
-    _initializeSpeech();
-    _initializeTts();
-  }
+
+ @override
+void initState() {
+  super.initState();
+
+  _initializeLocation();
+  _loadSystemContext();
+}
 
   @override
   void dispose() {
-    _speechToText.stop();
-    _flutterTts.stop();
     super.dispose();
-  }
-
-  Future<void> _initializeSpeech() async {
-    await _speechToText.initialize();
-  }
-
-  Future<void> _initializeTts() async {
-    await _flutterTts.setSharedInstance(true);
-    await _flutterTts.awaitSpeakCompletion(true);
-  }
-
-  Future<void> _toggleListening() async {
-    if (_isListening) {
-      await _speechToText.stop();
-      setState(() {
-        _isListening = false;
-        _axisState = AxisState.idle;
-      });
-    } else {
-      await _speechToText.listen(
-        onResult: (result) {
-          setState(() {
-            _messageController.text = result.recognizedWords;
-          });
-        },
-        onSoundLevelChange: (level) {},
-        cancelOnError: true,
-        listenMode: ListenMode.confirmation,
-        partialResults: true,
-      );
-      setState(() {
-        _isListening = true;
-        _axisState = AxisState.listening;
-      });
-    }
-  }
-
-  Future<void> _speak(String text) async {
-    setState(() {
-      _axisState = AxisState.speaking;
-    });
-    await _flutterTts.speak(text);
-    setState(() {
-      _axisState = AxisState.idle;
-    });
   }
 
   void _executePredefinedCommand(String command) {
@@ -239,7 +189,8 @@ class _AxisScreenState extends State<AxisScreen> {
       });
 
       // AI Classification
-      final classificationResult = await _visionService.classifyWaste(image);
+      final classificationResult =
+    await _visionService.classifyWaste(File(image.path));
       final wasteType = classificationResult['waste_type'] as String?;
       final severity = classificationResult['severity'] as int?;
 
@@ -322,79 +273,6 @@ Report submitted successfully.
     }
   }
 
-  Future<void> _scanBarcode() async {
-    final barcode = await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => const BarcodeScannerScreen(),
-      ),
-    );
-
-    if (barcode == null) return;
-
-    setState(() {
-      _isLoading = true;
-    });
-
-    try {
-      // Fetch product data
-      final productData = await _productService.fetchProductData(barcode);
-
-      // Get packaging impact
-      final packagingImpact = _productService.estimatePackagingImpact(
-        productData['packaging'] as String,
-      );
-
-      // Build product info string
-      final productInfo = '''
-Product: ${productData['product_name']}
-Brand: ${productData['brands']}
-Packaging: ${productData['packaging']}
-Categories: ${productData['categories']}
-Packaging Impact: $packagingImpact
-''';
-
-      // Send to Gemini for environmental impact explanation
-      final prompt = '''
-Explain the environmental impact of this product in clear, structured text.
-
-Product Information:
-$productInfo
-
-Focus on:
-- Packaging sustainability
-- Material recyclability
-- Disposal difficulty
-- Environmental footprint
-
-Provide a concise, informative response.
-''';
-
-      final explanation = await _axisService.generateExplanation(prompt);
-
-      // Display result in chat
-      setState(() {
-        _messages.add(ChatMessage(
-          text: explanation,
-          isUser: false,
-          executedAction: true,
-        ));
-        _isLoading = false;
-      });
-
-      _scrollToBottom();
-    } catch (e) {
-      setState(() {
-        _messages.add(ChatMessage(
-          text: 'Error scanning barcode: $e',
-          isUser: false,
-        ));
-        _isLoading = false;
-      });
-      _scrollToBottom();
-    }
-  }
-
   Future<void> _sendMessage() async {
     final message = _messageController.text.trim();
     if (message.isEmpty) return;
@@ -431,7 +309,7 @@ Provide a concise, informative response.
       _scrollToBottom();
       
       // Speak the response
-      await _speak(response.message);
+    
     } catch (e) {
       setState(() {
         _messages.add(ChatMessage(
@@ -556,32 +434,10 @@ Provide a concise, informative response.
           // Input row
           Row(
             children: [
-              // Mic button
-              IconButton(
-                onPressed: _isLoading ? null : _toggleListening,
-                icon: Icon(_isListening ? Icons.mic : Icons.mic_none),
-                color: _isListening ? Colors.green : AppColors.primary,
-                style: IconButton.styleFrom(
-                  backgroundColor: _isListening 
-                      ? Colors.green.withOpacity(0.2) 
-                      : AppColors.primary.withOpacity(0.1),
-                ),
-              ),
-              const SizedBox(width: 8),
               // Camera button
               IconButton(
                 onPressed: _isLoading ? null : _captureAndReport,
                 icon: const Icon(Icons.camera_alt),
-                color: AppColors.primary,
-                style: IconButton.styleFrom(
-                  backgroundColor: AppColors.primary.withOpacity(0.1),
-                ),
-              ),
-              const SizedBox(width: 8),
-              // Barcode button
-              IconButton(
-                onPressed: _isLoading ? null : _scanBarcode,
-                icon: const Icon(Icons.qr_code_scanner),
                 color: AppColors.primary,
                 style: IconButton.styleFrom(
                   backgroundColor: AppColors.primary.withOpacity(0.1),

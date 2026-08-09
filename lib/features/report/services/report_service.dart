@@ -147,8 +147,19 @@ class ReportService {
   }
 
   Future<void> joinEvent(String eventId) async {
-    await _supabase.rpc('increment_participants', params: {'event_id': eventId});
-  }
+  final current = await _supabase
+      .from(_tableName)
+      .select('participants_count')
+      .eq('id', eventId)
+      .single();
+
+  final count = current['participants_count'] ?? 0;
+
+  await _supabase
+      .from(_tableName)
+      .update({'participants_count': count + 1})
+      .eq('id', eventId);
+}
 
   Future<List<Report>> fetchUpcomingEvents() async {
     final now = DateTime.now().toIso8601String();
@@ -165,20 +176,28 @@ class ReportService {
   }
 
   Future<void> joinEventWithName(String eventId, String userName) async {
-    // Try to append to participants array first
-    try {
-      await _supabase.rpc(
-        'append_participant',
-        params: {
-          'event_id': eventId,
-          'user_name': userName,
-        },
-      );
-    } catch (e) {
-      // Fallback to incrementing participants_count
-      await _supabase.from(_tableName).update({
-        'participants_count': _supabase.raw('participants_count + 1'),
-      }).eq('id', eventId);
-    }
+  try {
+    await _supabase.rpc(
+      'append_participant',
+      params: {
+        'event_id': eventId,
+        'user_name': userName,
+      },
+    );
+  } catch (e) {
+    // Safe fallback increment
+    final current = await _supabase
+        .from(_tableName)
+        .select('participants_count')
+        .eq('id', eventId)
+        .single();
+
+    final count = current['participants_count'] ?? 0;
+
+    await _supabase
+        .from(_tableName)
+        .update({'participants_count': count + 1})
+        .eq('id', eventId);
   }
+}
 }

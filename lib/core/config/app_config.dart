@@ -8,6 +8,7 @@
 |--------------------------------------------------------------------------
 */
 
+
 class AppConfig {
   // ===============================
   // APP IDENTITY
@@ -31,4 +32,10 @@ class AppConfig {
   // VERSION INFO
   // ===============================
   static const String version = "1.0.0";
+
+  // ===============================
+  // API CONFIG
+  // ===============================
+  static const String geminiApiKey =
+      String.fromEnvironment('GEMINI_API_KEY');
 }

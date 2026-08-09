@@ -33,7 +33,7 @@ class _ImpactScreenState extends State<ImpactScreen> {
   final SystemContextService _systemContextService = SystemContextService();
   final UserIdentityService _userIdentityService = UserIdentityService();
   final TrendService _trendService = TrendService();
-  final RecommendationEngine _recommendationEngine = RecommendationEngine();
+  
   Map<String, dynamic>? _stats;
   Map<String, dynamic>? _forestAlerts;
   Map<String, dynamic>? _systemContext;
@@ -98,7 +98,7 @@ class _ImpactScreenState extends State<ImpactScreen> {
 
       // Generate recommendations
       final rank = context['rank'] as int? ?? 0;
-      final recommendations = _recommendationEngine.generateRecommendations(
+      final recommendations = RecommendationEngine.generateRecommendations(
         riskScore: score,
         trends: _trends ?? {},
         nearbyOpenReports: nearbyOpenReports,
