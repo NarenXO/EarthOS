@@ -6,13 +6,14 @@ class GeminiService {
 
   Future<String> generateText(String prompt) async {
     final url = Uri.parse(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${AppConfig.geminiApiKey}"
+      "https://api.generativeai.google.com/v1/models/gemini-1.5-flash:generateContent"
     );
 
     final response = await http.post(
       url,
       headers: {
         "Content-Type": "application/json",
+        "Authorization": "Bearer ${AppConfig.geminiApiKey}",
       },
       body: jsonEncode({
         "contents": [
