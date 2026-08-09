@@ -34,30 +34,12 @@ class _AppScaffoldState extends State<AppScaffold> {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-
-        // ===============================
-        // MAIN CONTENT
-        // ===============================
-
-        IndexedStack(
-          index: _selectedIndex,
-          children: _screens,
-        ),
-
-        // ===============================
-        // FLOATING DOCK
-        // ===============================
-
-        Align(
-          alignment: Alignment.bottomCenter,
-          child: Padding(
-            padding: const EdgeInsets.only(bottom: 30),
-            child: _buildFloatingDock(),
-          ),
-        ),
-      ],
+    return Scaffold(
+      body: IndexedStack(
+        index: _selectedIndex,
+        children: _screens,
+      ),
+      bottomNavigationBar: _buildDock(),
     );
   }
 
@@ -65,16 +47,15 @@ class _AppScaffoldState extends State<AppScaffold> {
   // FLOATING GLASS DOCK
   // =========================================================
 
-  Widget _buildFloatingDock() {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 400),
-      curve: Curves.easeOutBack,
+  Widget _buildDock() {
+    return Container(
+      height: 70,
       padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
       decoration: BoxDecoration(
         color: AppColors.glass,
-        borderRadius: BorderRadius.circular(50),
-        border: Border.all(color: AppColors.border),
-        boxShadow: AppColors.softGlow,
+        border: Border(
+          top: BorderSide(color: AppColors.border),
+        ),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,

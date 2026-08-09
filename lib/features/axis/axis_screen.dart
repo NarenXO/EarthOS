@@ -426,7 +426,7 @@ Report submitted successfully.
             flex: 3,
             child: ListView.builder(
               controller: _scrollController,
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
               itemCount: _messages.length,
               itemBuilder: (context, index) {
                 return ChatBubble(message: _messages[index]);
