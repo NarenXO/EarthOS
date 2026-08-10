@@ -4,16 +4,15 @@ import 'package:earthos/core/config/app_config.dart';
 
 class GeminiService {
 
-  Future<String> generateText(String prompt) async {
-    final url = Uri.parse(
-      "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent"
-    );
+  static const String _endpoint =
+      "https://api.generativeai.google.com/v1/models/gemini-1.5-flash:generateContent";
 
+  Future<String> generateText(String prompt) async {
     final response = await http.post(
-      url,
+      Uri.parse(_endpoint),
       headers: {
         "Content-Type": "application/json",
-        "x-goog-api-key": AppConfig.geminiApiKey,
+        "Authorization": "Bearer ${AppConfig.geminiApiKey}",
       },
       body: jsonEncode({
         "contents": [
@@ -30,7 +29,7 @@ class GeminiService {
       final data = jsonDecode(response.body);
       return data["candidates"][0]["content"]["parts"][0]["text"];
     } else {
-      return "AI service error (${response.statusCode}).";
+      return "AI service error (${response.statusCode})";
     }
   }
 }
