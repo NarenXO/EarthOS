@@ -1,28 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:earthos/features/axis/widgets/mlkit_barcode_scanner.dart';
 
-class BarcodeScannerScreen extends StatefulWidget {
+class BarcodeScannerScreen extends StatelessWidget {
   const BarcodeScannerScreen({super.key});
 
   @override
-  State<BarcodeScannerScreen> createState() => _BarcodeScannerScreenState();
-}
-
-class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
-  @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Scan Barcode'),
-      ),
-      body: MobileScanner(
-        onDetect: (capture) {
-          final barcode = capture.barcodes.first;
-          if (barcode.rawValue != null) {
-            Navigator.pop(context, barcode.rawValue);
-          }
-        },
-      ),
-    );
+    return const MLKitBarcodeScanner();
   }
 }

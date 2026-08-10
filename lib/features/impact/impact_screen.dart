@@ -139,6 +139,7 @@ class _ImpactScreenState extends State<ImpactScreen> {
       final carbon = (stats['totalCarbonImpact'] as num?)?.toDouble() ?? 0.0;
 
       print('Impact fetch: totalReports=$totalReports, verified=$verified, carbon=$carbon');
+      print('Impact UI stats: $stats');
 
       setState(() {
         _stats = stats;

@@ -11,7 +11,8 @@ class ProductService {
       );
 
       final response = await http.get(url);
-      print('Product API status: ${response.statusCode}');
+      print('OpenFoodFacts response status: ${response.statusCode}');
+      print('Product data: ${response.body.length > 200 ? response.body.substring(0, 200) : response.body}');
 
       if (response.statusCode != 200) {
         return {

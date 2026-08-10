@@ -5,6 +5,10 @@ class Achievement {
   final String icon;
   final bool isUnlocked;
   final double progress; // 0.0 to 1.0
+  final double currentValue;
+  final double requiredValue;
+
+  bool get unlocked => isUnlocked;
 
   Achievement({
     required this.id,
@@ -13,6 +17,8 @@ class Achievement {
     required this.icon,
     required this.isUnlocked,
     required this.progress,
+    required this.currentValue,
+    required this.requiredValue,
   });
 }
 
@@ -31,6 +37,8 @@ class AchievementService {
         icon: '🌱',
         isUnlocked: totalReports >= 1,
         progress: (totalReports / 1).clamp(0.0, 1.0),
+        currentValue: totalReports.toDouble(),
+        requiredValue: 1.0,
       ),
       Achievement(
         id: 'active_scout',
@@ -39,6 +47,8 @@ class AchievementService {
         icon: '🔍',
         isUnlocked: totalReports >= 5,
         progress: (totalReports / 5).clamp(0.0, 1.0),
+        currentValue: totalReports.toDouble(),
+        requiredValue: 5.0,
       ),
       Achievement(
         id: 'guardian',
@@ -47,6 +57,8 @@ class AchievementService {
         icon: '🛡️',
         isUnlocked: totalReports >= 10,
         progress: (totalReports / 10).clamp(0.0, 1.0),
+        currentValue: totalReports.toDouble(),
+        requiredValue: 10.0,
       ),
       Achievement(
         id: 'first_cleanup',
@@ -55,6 +67,8 @@ class AchievementService {
         icon: '🧹',
         isUnlocked: verifiedReports >= 1,
         progress: (verifiedReports / 1).clamp(0.0, 1.0),
+        currentValue: verifiedReports.toDouble(),
+        requiredValue: 1.0,
       ),
       Achievement(
         id: 'cleanup_hero',
@@ -63,6 +77,8 @@ class AchievementService {
         icon: '⭐',
         isUnlocked: verifiedReports >= 5,
         progress: (verifiedReports / 5).clamp(0.0, 1.0),
+        currentValue: verifiedReports.toDouble(),
+        requiredValue: 5.0,
       ),
       Achievement(
         id: 'carbon_saver',
@@ -71,6 +87,8 @@ class AchievementService {
         icon: '🍃',
         isUnlocked: verifiedCarbon >= 5.0,
         progress: (verifiedCarbon / 5.0).clamp(0.0, 1.0),
+        currentValue: verifiedCarbon,
+        requiredValue: 5.0,
       ),
       Achievement(
         id: 'climate_champion',
@@ -79,6 +97,8 @@ class AchievementService {
         icon: '🌍',
         isUnlocked: verifiedCarbon >= 25.0,
         progress: (verifiedCarbon / 25.0).clamp(0.0, 1.0),
+        currentValue: verifiedCarbon,
+        requiredValue: 25.0,
       ),
       Achievement(
         id: 'earth_master',
@@ -87,6 +107,8 @@ class AchievementService {
         icon: '👑',
         isUnlocked: verifiedCarbon >= 50.0 && verifiedReports >= 10,
         progress: (((verifiedCarbon / 50.0) + (verifiedReports / 10.0)) / 2).clamp(0.0, 1.0),
+        currentValue: verifiedCarbon,
+        requiredValue: 50.0,
       ),
     ];
   }

@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:earthos/features/report/models/report_model.dart';
+import 'package:earthos/core/services/carbon_engine.dart';
 
 class ReportService {
   final SupabaseClient _supabase = Supabase.instance.client;
@@ -20,16 +21,24 @@ class ReportService {
     String? description,
     String? eventDate,
   }) async {
+    final double computedCarbon = carbonEstimate ??
+        CarbonEngine.calculateImpact(
+          wasteType: type,
+          severity: severity ?? 1,
+        );
+
+    print('Report created: type=$type severity=$severity carbon=$computedCarbon');
+
     await _supabase.from(_tableName).insert({
       'type': type,
       'lat': lat,
       'lng': lng,
       'created_by': createdBy,
       'created_by_name': createdByName,
+      'carbon_estimate': computedCarbon,
       if (photoBefore != null) 'photo_before': photoBefore,
       if (aiClassification != null) 'ai_classification': aiClassification,
       if (severity != null) 'severity': severity,
-      if (carbonEstimate != null) 'carbon_estimate': carbonEstimate,
       if (isSensitive != null) 'is_sensitive': isSensitive,
       if (title != null) 'title': title,
       if (description != null) 'description': description,
@@ -59,15 +68,22 @@ class ReportService {
             .toList());
   }
 
-  Future<void> verifyReport({
+  Future<bool> verifyReport({
     required String reportId,
     required String photoAfter,
   }) async {
-    await _supabase.from(_tableName).update({
-      'status': 'verified',
-      'photo_after': photoAfter,
-      'verified_at': DateTime.now().toIso8601String(),
-    }).eq('id', reportId);
+    try {
+      print('Cleanup: updating report to verified');
+      await _supabase.from(_tableName).update({
+        'status': 'verified',
+        'photo_after': photoAfter,
+        'verified_at': DateTime.now().toIso8601String(),
+      }).eq('id', reportId);
+      return true;
+    } catch (e) {
+      print('Error updating report verification: $e');
+      return false;
+    }
   }
 
   Future<Map<String, dynamic>> fetchImpactStats() async {
@@ -80,6 +96,8 @@ class ReportService {
       (sum, report) => sum + (report.carbonEstimate ?? 0.0),
     );
     final totalSensitiveReports = reports.where((r) => r.isSensitive == true).length;
+
+    print('Impact stats: reports=$totalReports, verified=$verifiedReports, carbon=$totalCarbonImpact');
 
     return {
       'totalReports': totalReports,
@@ -143,23 +161,27 @@ class ReportService {
     leaderboard.sort((a, b) => 
         (b['carbonDiverted'] as double).compareTo(a['carbonDiverted'] as double));
 
+    print('Leaderboard fetch: total verified reports=${verifiedReports.length}');
+    print('Leaderboard: grouped users=${userMap.length}');
+    print('Leaderboard entries: $leaderboard');
+
     return leaderboard;
   }
 
   Future<void> joinEvent(String eventId) async {
-  final current = await _supabase
-      .from(_tableName)
-      .select('participants_count')
-      .eq('id', eventId)
-      .single();
+    final current = await _supabase
+        .from(_tableName)
+        .select('participants_count')
+        .eq('id', eventId)
+        .single();
 
-  final count = current['participants_count'] ?? 0;
+    final count = current['participants_count'] ?? 0;
 
-  await _supabase
-      .from(_tableName)
-      .update({'participants_count': count + 1})
-      .eq('id', eventId);
-}
+    await _supabase
+        .from(_tableName)
+        .update({'participants_count': count + 1})
+        .eq('id', eventId);
+  }
 
   Future<List<Report>> fetchUpcomingEvents() async {
     final now = DateTime.now().toIso8601String();
@@ -176,28 +198,27 @@ class ReportService {
   }
 
   Future<void> joinEventWithName(String eventId, String userName) async {
-  try {
-    await _supabase.rpc(
-      'append_participant',
-      params: {
-        'event_id': eventId,
-        'user_name': userName,
-      },
-    );
-  } catch (e) {
-    // Safe fallback increment
-    final current = await _supabase
-        .from(_tableName)
-        .select('participants_count')
-        .eq('id', eventId)
-        .single();
+    try {
+      await _supabase.rpc(
+        'append_participant',
+        params: {
+          'event_id': eventId,
+          'user_name': userName,
+        },
+      );
+    } catch (e) {
+      final current = await _supabase
+          .from(_tableName)
+          .select('participants_count')
+          .eq('id', eventId)
+          .single();
 
-    final count = current['participants_count'] ?? 0;
+      final count = current['participants_count'] ?? 0;
 
-    await _supabase
-        .from(_tableName)
-        .update({'participants_count': count + 1})
-        .eq('id', eventId);
+      await _supabase
+          .from(_tableName)
+          .update({'participants_count': count + 1})
+          .eq('id', eventId);
+    }
   }
-}
 }

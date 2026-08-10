@@ -40,12 +40,14 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     try {
       final leaderboard = await _reportService.fetchLeaderboard();
       final events = await _reportService.fetchUpcomingEvents();
+      print('Leaderboard screen loaded: ${leaderboard.length} entries, ${events.length} events');
       setState(() {
         _leaderboard = leaderboard;
         _upcomingEvents = events;
         _isLoading = false;
       });
     } catch (e) {
+      print('Leaderboard screen error: $e');
       setState(() {
         _isLoading = false;
       });

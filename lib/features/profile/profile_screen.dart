@@ -43,12 +43,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
     try {
       final user = await _userIdentityService.getOrCreateUser();
       final impact = await _reportService.fetchUserImpact(user.id);
+      print('Profile impact: reports=${impact['totalReports']}, verified=${impact['verifiedReports']}, carbon=${impact['totalCarbonImpact']}');
+
+      final achievements = AchievementService.calculateAchievements(impact);
+      print('Achievements: unlocked=${achievements.where((a) => a.unlocked).length}/${achievements.length}');
+      for (var a in achievements) {
+        print('  ${a.title}: unlocked=${a.unlocked}, current=${a.currentValue}, required=${a.requiredValue}');
+      }
+
       setState(() {
         _userImpact = impact;
         _userName = user.name.isNotEmpty ? user.name : AppConfig.author;
         _isLoading = false;
       });
     } catch (e) {
+      print('Error fetching profile impact: $e');
       setState(() {
         _isLoading = false;
       });

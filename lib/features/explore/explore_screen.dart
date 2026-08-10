@@ -7,12 +7,16 @@
 */
 
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:http/http.dart' as http;
 
 import 'package:earthos/core/constants/app_colors.dart';
 import 'package:earthos/core/services/forest_service.dart';
+import 'package:earthos/core/services/cleanup_verification_service.dart';
 import 'package:earthos/features/report/services/report_service.dart';
 import 'package:earthos/features/report/models/report_model.dart';
 
@@ -218,6 +222,92 @@ class _ExploreScreenState extends State<ExploreScreen> {
     });
   }
 
+  Future<void> _cleanThisDump(Report report) async {
+    final imagePicker = ImagePicker();
+    final XFile? afterImage = await imagePicker.pickImage(
+      source: ImageSource.camera,
+      imageQuality: 80,
+    );
+
+    if (afterImage == null) return;
+
+    final afterFile = File(afterImage.path);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Analyzing cleanup with AI verification...')),
+      );
+    }
+
+    try {
+      File beforeFile;
+      if (report.photoBefore != null && report.photoBefore!.isNotEmpty) {
+        if (report.photoBefore!.startsWith('http')) {
+          final res = await http.get(Uri.parse(report.photoBefore!));
+          final tempDir = Directory.systemTemp;
+          beforeFile = File('${tempDir.path}/before_${report.id}.jpg');
+          await beforeFile.writeAsBytes(res.bodyBytes);
+        } else {
+          beforeFile = File(report.photoBefore!);
+        }
+      } else {
+        beforeFile = afterFile;
+      }
+
+      final verificationService = CleanupVerificationService();
+      final isVerified = await verificationService.verifyCleanup(
+        beforeFile,
+        afterFile,
+        reportId: report.id,
+      );
+
+      if (isVerified) {
+        await _reportService.verifyReport(
+          reportId: report.id,
+          photoAfter: afterFile.path,
+        );
+
+        if (mounted) {
+          showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('✅ Cleanup Verified!'),
+              content: const Text('AI has verified that the waste has been removed. Thank you for making an impact!'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('OK'),
+                ),
+              ],
+            ),
+          );
+        }
+      } else {
+        if (mounted) {
+          showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('⚠️ Verification Failed'),
+              content: const Text('Waste not fully removed. Try again.'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('OK'),
+                ),
+              ],
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error in cleanup verification: $e')),
+        );
+      }
+    }
+  }
+
   void _showReportDetails(Report report) {
     showDialog(
       context: context,
@@ -261,12 +351,9 @@ class _ExploreScreenState extends State<ExploreScreen> {
           ),
           if (report.type == 'dumping')
             ElevatedButton(
-              onPressed: () async {
+              onPressed: () {
                 Navigator.pop(context);
-                // Navigate to report creation or cleanup flow
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Cleanup flow initiated')),
-                );
+                _cleanThisDump(report);
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.red,

@@ -1,13 +1,3 @@
-/*
-|--------------------------------------------------------------------------
-| EarthOS
-| File: mlkit_barcode_scanner.dart
-| Feature: MLKit Barcode Scanner
-| Author: Naren
-|--------------------------------------------------------------------------
-| Barcode scanner using camera and ML Kit
-|--------------------------------------------------------------------------
-*/
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:google_mlkit_barcode_scanning/google_mlkit_barcode_scanning.dart';
@@ -23,12 +13,13 @@ class _MLKitBarcodeScannerState extends State<MLKitBarcodeScanner> {
   CameraController? _cameraController;
   late final BarcodeScanner _barcodeScanner;
   bool _isScanning = true;
+  bool _isProcessing = false;
 
   @override
   void initState() {
     super.initState();
-    _initializeCamera();
     _barcodeScanner = BarcodeScanner();
+    _initializeCamera();
   }
 
   Future<void> _initializeCamera() async {
@@ -56,12 +47,14 @@ class _MLKitBarcodeScannerState extends State<MLKitBarcodeScanner> {
       );
 
       await _cameraController!.initialize();
+      print('Barcode scanner: camera initialized');
 
       if (mounted) {
         setState(() {});
         _startBarcodeDetection();
       }
     } catch (e) {
+      print('Camera initialization error: $e');
       if (mounted) {
         Navigator.pop(context, null);
         ScaffoldMessenger.of(context).showSnackBar(
@@ -73,20 +66,26 @@ class _MLKitBarcodeScannerState extends State<MLKitBarcodeScanner> {
 
   void _startBarcodeDetection() {
     _cameraController!.startImageStream((CameraImage image) {
-      if (!_isScanning) return;
+      if (!_isScanning || _isProcessing) return;
 
-      // Use NV21 format directly for ML Kit
-      final inputImage = InputImage.fromBytes(
-        bytes: image.planes.first.bytes,
-        metadata: InputImageMetadata(
-          size: Size(image.width.toDouble(), image.height.toDouble()),
-          rotation: InputImageRotation.rotation0deg,
-          format: InputImageFormat.nv21,
-          bytesPerRow: image.planes.first.bytesPerRow,
-        ),
-      );
+      _isProcessing = true;
+      print('Barcode scanner: processing frame');
 
-      _processImage(inputImage);
+      try {
+        final inputImage = InputImage.fromBytes(
+          bytes: image.planes.first.bytes,
+          metadata: InputImageMetadata(
+            size: Size(image.width.toDouble(), image.height.toDouble()),
+            rotation: InputImageRotation.rotation0deg,
+            format: InputImageFormat.nv21,
+            bytesPerRow: image.planes.first.bytesPerRow,
+          ),
+        );
+
+        _processImage(inputImage);
+      } catch (e) {
+        _isProcessing = false;
+      }
     });
   }
 
@@ -94,13 +93,17 @@ class _MLKitBarcodeScannerState extends State<MLKitBarcodeScanner> {
     try {
       final barcodes = await _barcodeScanner.processImage(inputImage);
 
-      if (barcodes.isNotEmpty && mounted) {
+      if (barcodes.isNotEmpty && mounted && _isScanning) {
         _isScanning = false;
         final barcode = barcodes.first;
-        Navigator.pop(context, barcode.rawValue);
+        final rawValue = barcode.rawValue;
+        print('Barcode scanner: DETECTED: $rawValue');
+        Navigator.pop(context, rawValue);
       }
     } catch (e) {
-      // Ignore processing errors
+      print('Error processing barcode image: $e');
+    } finally {
+      _isProcessing = false;
     }
   }
 
@@ -143,12 +146,18 @@ class _MLKitBarcodeScannerState extends State<MLKitBarcodeScanner> {
                   left: 0,
                   right: 0,
                   child: Center(
-                    child: Text(
-                      'Align barcode within frame',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        backgroundColor: Colors.black.withOpacity(0.5),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.black54,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Text(
+                        'Align barcode within frame',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                        ),
                       ),
                     ),
                   ),
