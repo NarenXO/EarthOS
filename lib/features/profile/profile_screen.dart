@@ -213,7 +213,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  get userImpact => _userImpact ?? {};
+  Map<String, dynamic> get userImpact => _userImpact ?? {};
 
   // =========================================================
   // ACHIEVEMENTS SECTION
