@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:earthos/core/constants/app_colors.dart';
 
 enum AxisState { idle, listening, processing, speaking }
 
 class AxisAvatar extends StatefulWidget {
-  final AxisState state;
+  final dynamic state; // Accepts String or AxisState enum
 
   const AxisAvatar({
     super.key,
@@ -46,16 +45,25 @@ class _AxisAvatarState extends State<AxisAvatar>
     super.dispose();
   }
 
+  String _getStateString() {
+    if (widget.state is AxisState) {
+      return (widget.state as AxisState).name;
+    }
+    return widget.state.toString();
+  }
+
   Color _getStateColor() {
-    switch (widget.state) {
-      case AxisState.idle:
-        return Colors.blue;
-      case AxisState.listening:
-        return Colors.green;
-      case AxisState.processing:
+    final s = _getStateString();
+    switch (s) {
+      case 'listening':
+        return const Color(0xFF00C896); // green
+      case 'processing':
         return Colors.orange;
-      case AxisState.speaking:
+      case 'speaking':
         return Colors.purple;
+      case 'idle':
+      default:
+        return Colors.blue;
     }
   }
 
@@ -73,7 +81,7 @@ class _AxisAvatarState extends State<AxisAvatar>
             color: stateColor,
             boxShadow: [
               BoxShadow(
-                color: stateColor.withOpacity(_glowAnimation.value * 0.6),
+                color: stateColor.withValues(alpha: _glowAnimation.value * 0.6),
                 blurRadius: 30 * _glowAnimation.value,
                 spreadRadius: 10 * _glowAnimation.value,
               ),
@@ -88,8 +96,8 @@ class _AxisAvatarState extends State<AxisAvatar>
                 shape: BoxShape.circle,
                 gradient: RadialGradient(
                   colors: [
-                    stateColor.withOpacity(0.8),
-                    stateColor.withOpacity(0.4),
+                    stateColor.withValues(alpha: 0.8),
+                    stateColor.withValues(alpha: 0.4),
                   ],
                 ),
               ),
@@ -104,20 +112,15 @@ class _AxisAvatarState extends State<AxisAvatar>
   }
 
   Widget _buildStateIcon() {
-    switch (widget.state) {
-      case AxisState.idle:
-        return const Icon(
-          Icons.smart_toy,
-          size: 60,
-          color: Colors.white,
-        );
-      case AxisState.listening:
+    final s = _getStateString();
+    switch (s) {
+      case 'listening':
         return const Icon(
           Icons.mic,
           size: 60,
           color: Colors.white,
         );
-      case AxisState.processing:
+      case 'processing':
         return const SizedBox(
           width: 40,
           height: 40,
@@ -126,9 +129,16 @@ class _AxisAvatarState extends State<AxisAvatar>
             valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
           ),
         );
-      case AxisState.speaking:
+      case 'speaking':
         return const Icon(
           Icons.volume_up,
+          size: 60,
+          color: Colors.white,
+        );
+      case 'idle':
+      default:
+        return const Icon(
+          Icons.smart_toy,
           size: 60,
           color: Colors.white,
         );

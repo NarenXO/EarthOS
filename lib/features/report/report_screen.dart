@@ -35,7 +35,6 @@ class _ReportScreenState extends State<ReportScreen>
 
   late AnimationController _orbController;
   final ImagePicker _imagePicker = ImagePicker();
-  final VisionService _visionService = VisionService();
   final ReportService _reportService = ReportService();
   final UserIdentityService _userIdentityService = UserIdentityService();
   final CleanupVerificationService _verificationService = CleanupVerificationService();
@@ -107,7 +106,7 @@ class _ReportScreenState extends State<ReportScreen>
     });
 
     try {
-      final result = await _visionService.classifyWaste(_selectedImage!);
+      final result = await VisionService.classifyWaste(_selectedImage!);
 
       final wasteType = result['waste_type'] as String?;
       var severity = result['severity'] as int?;

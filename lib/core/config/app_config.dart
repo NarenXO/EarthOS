@@ -38,4 +38,6 @@ class AppConfig {
   // ===============================
   static const String geminiApiKey =
       String.fromEnvironment('GEMINI_API_KEY');
+  static const String geminiEndpoint =
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent';
 }

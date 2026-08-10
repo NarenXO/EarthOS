@@ -5,15 +5,17 @@
 | Feature: AXIS AI Assistant
 | Author: Naren
 |--------------------------------------------------------------------------
-| Full-screen AI assistant with tool-calling capability
+| Full-screen AI assistant with tool-calling capability & TTS voice reply
 |--------------------------------------------------------------------------
 */
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
-
+import 'package:flutter_tts/flutter_tts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:earthos/core/constants/app_colors.dart';
 import 'package:earthos/core/services/user_identity_service.dart';
@@ -25,12 +27,10 @@ import 'package:earthos/core/services/recommendation_engine.dart';
 import 'package:earthos/core/services/trend_service.dart';
 import 'package:earthos/features/report/services/report_service.dart';
 import 'package:earthos/features/axis/services/axis_service.dart';
-import 'package:earthos/features/axis/models/axis_response.dart';
 import 'package:earthos/features/axis/services/product_service.dart';
 import 'package:earthos/features/axis/services/system_context_service.dart';
 import 'package:earthos/features/axis/widgets/axis_avatar.dart';
 import 'package:earthos/features/axis/widgets/mlkit_barcode_scanner.dart';
-
 
 class AxisScreen extends StatefulWidget {
   const AxisScreen({super.key});
@@ -42,7 +42,6 @@ class AxisScreen extends StatefulWidget {
 class _AxisScreenState extends State<AxisScreen> {
   final AxisService _axisService = AxisService();
   final UserIdentityService _userIdentityService = UserIdentityService();
-  final VisionService _visionService = VisionService();
   final SensitiveZoneService _sensitiveZoneService = SensitiveZoneService();
   final ReportService _reportService = ReportService();
   final ProductService _productService = ProductService();
@@ -51,6 +50,7 @@ class _AxisScreenState extends State<AxisScreen> {
   final ImagePicker _imagePicker = ImagePicker();
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  final FlutterTts _tts = FlutterTts();
 
   late stt.SpeechToText _speech;
   bool _isListening = false;
@@ -58,24 +58,69 @@ class _AxisScreenState extends State<AxisScreen> {
   final List<ChatMessage> _messages = [];
   bool _isLoading = false;
   Position? _currentPosition;
-  AxisState _axisState = AxisState.idle;
-
+  String _avatarState = 'idle';
   bool _showKeypad = false;
 
+  static const String _chatHistoryKey = 'axis_chat_history';
 
- @override
-void initState() {
-  super.initState();
+  @override
+  void initState() {
+    super.initState();
 
-  _speech = stt.SpeechToText();
-  _initializeLocation();
-  _loadSystemContext();
-}
+    _speech = stt.SpeechToText();
+    _tts.setLanguage("en-US");
+    _tts.setSpeechRate(0.5);
+    _tts.setPitch(1.0);
+    _tts.setCompletionHandler(() {
+      if (mounted) setState(() => _avatarState = 'idle');
+    });
+
+    _initializeLocation();
+    _loadChatHistory();
+  }
 
   @override
   void dispose() {
     _speech.stop();
+    _tts.stop();
     super.dispose();
+  }
+
+  Future<void> _loadChatHistory() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final historyJson = prefs.getStringList(_chatHistoryKey);
+      if (historyJson != null && historyJson.isNotEmpty) {
+        final loadedMessages = historyJson.map((item) {
+          final Map<String, dynamic> jsonMap = jsonDecode(item);
+          return ChatMessage.fromJson(jsonMap);
+        }).toList();
+        setState(() {
+          _messages.clear();
+          _messages.addAll(loadedMessages);
+        });
+      } else {
+        await _loadSystemContext();
+      }
+    } catch (e) {
+      await _loadSystemContext();
+    }
+  }
+
+  Future<void> _saveChatHistory() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final historyJson = _messages.map((m) => jsonEncode(m.toJson())).toList();
+      await prefs.setStringList(_chatHistoryKey, historyJson);
+    } catch (e) {
+      print('Error saving chat history: $e');
+    }
+  }
+
+  Future<void> _speakResponse(String text) async {
+    if (text.isEmpty) return;
+    setState(() => _avatarState = 'speaking');
+    await _tts.speak(text);
   }
 
   Future<void> _toggleListening() async {
@@ -83,14 +128,14 @@ void initState() {
       await _speech.stop();
       setState(() {
         _isListening = false;
-        _axisState = AxisState.idle;
+        _avatarState = 'idle';
       });
     } else {
       bool available = await _speech.initialize();
       if (available) {
         setState(() {
           _isListening = true;
-          _axisState = AxisState.listening;
+          _avatarState = 'listening';
         });
 
         _speech.listen(
@@ -100,6 +145,7 @@ void initState() {
             });
 
             if (result.finalResult) {
+              setState(() => _avatarState = 'processing');
               _toggleListening();
               _sendMessage();
             }
@@ -110,16 +156,51 @@ void initState() {
   }
 
   Future<void> _scanBarcode() async {
-    final barcode = await Navigator.push(
+    final barcode = await Navigator.push<String>(
       context,
       MaterialPageRoute(
         builder: (context) => const MLKitBarcodeScanner(),
       ),
     );
 
-    if (barcode != null) {
-      _messageController.text = 'Scan barcode: $barcode';
-      _sendMessage();
+    if (barcode != null && barcode.isNotEmpty) {
+      setState(() {
+        _messages.add(ChatMessage(
+          text: 'Scanned barcode: $barcode',
+          isUser: true,
+        ));
+        _isLoading = true;
+        _avatarState = 'processing';
+      });
+      _scrollToBottom();
+
+      final productData = await _productService.fetchProductData(barcode);
+      final productName = productData['product_name'] ?? 'Unknown Product';
+      final brands = productData['brands'] ?? 'Unknown';
+      final packaging = productData['packaging'] ?? 'Unknown';
+      final explanation = productData['gemini_explanation'] ?? '';
+
+      final reply = '''
+📦 Product: $productName
+🏷️ Brand: $brands
+♻️ Packaging: $packaging
+
+🌍 Environmental Analysis:
+$explanation
+''';
+
+      setState(() {
+        _messages.add(ChatMessage(
+          text: reply,
+          isUser: false,
+          executedAction: true,
+        ));
+        _isLoading = false;
+      });
+
+      _saveChatHistory();
+      _scrollToBottom();
+      await _speakResponse(reply);
     }
   }
 
@@ -139,7 +220,6 @@ void initState() {
       final forestAlerts = context['forestAlerts'] as Map<String, dynamic>? ?? {};
       final highConfidence = forestAlerts['highConfidence'] as int? ?? 0;
 
-      // Calculate risk score
       final globalStats = await _reportService.fetchImpactStats();
       final sensitiveReports = globalStats['totalSensitiveReports'] as int? ?? 0;
       final riskScore = RiskEngine.calculateRiskScore(
@@ -149,7 +229,6 @@ void initState() {
         daysSinceLastCleanup: 30,
       );
 
-      // Get trends
       final reports = await _reportService.fetchReports();
       final reportsJson = reports.map((r) => r.toJson()).toList();
       final trends = await _trendService.calculateTrends(
@@ -157,7 +236,6 @@ void initState() {
         forestAlerts: [],
       );
 
-      // Generate recommendations
       final recommendations = RecommendationEngine.generateRecommendations(
         riskScore: riskScore,
         trends: trends,
@@ -186,7 +264,6 @@ void initState() {
         greetingParts.add('🌱 You\'ve diverted ${totalCarbon.toStringAsFixed(1)} kg CO₂e through verified cleanups.');
       }
 
-      // Append recommendations
       if (recommendations.isNotEmpty) {
         greetingParts.add('\n${RecommendationEngine.formatRecommendations(recommendations)}');
       }
@@ -195,19 +272,24 @@ void initState() {
         greetingParts.add('How can I help you make an environmental impact today?');
       }
 
+      final greeting = greetingParts.join('\n\n');
+
       setState(() {
         _messages.add(ChatMessage(
-          text: greetingParts.join('\n\n'),
+          text: greeting,
           isUser: false,
         ));
       });
+      _saveChatHistory();
     } catch (e) {
+      const fallbackGreeting = 'Hello! I\'m AXIS, your environmental assistant. How can I help you today?';
       setState(() {
         _messages.add(ChatMessage(
-          text: 'Hello! I\'m AXIS, your environmental assistant. How can I help you today?',
+          text: fallbackGreeting,
           isUser: false,
         ));
       });
+      _saveChatHistory();
     }
   }
 
@@ -237,38 +319,38 @@ void initState() {
 
       setState(() {
         _isLoading = true;
+        _avatarState = 'processing';
       });
 
-      // AI Classification
       final classificationResult =
-    await _visionService.classifyWaste(File(image.path));
+          await VisionService.classifyWaste(File(image.path));
       final wasteType = classificationResult['waste_type'] as String?;
       final severity = classificationResult['severity'] as int?;
 
-      // Get location
       if (_currentPosition == null) {
         await _initializeLocation();
       }
 
       if (_currentPosition == null) {
+        const errorText = 'Unable to get location. Please enable location services.';
         setState(() {
           _messages.add(ChatMessage(
-            text: 'Unable to get location. Please enable location services.',
+            text: errorText,
             isUser: false,
           ));
           _isLoading = false;
         });
+        _saveChatHistory();
         _scrollToBottom();
+        await _speakResponse(errorText);
         return;
       }
 
-      // Sensitive zone check
       final isSensitive = await _sensitiveZoneService.isNearSensitiveZone(
         lat: _currentPosition!.latitude,
         lng: _currentPosition!.longitude,
       );
 
-      // Carbon calculation
       var adjustedSeverity = severity ?? 1;
       if (isSensitive) {
         adjustedSeverity = (adjustedSeverity + 1).clamp(1, 5);
@@ -279,7 +361,6 @@ void initState() {
         severity: adjustedSeverity,
       );
 
-      // Create report
       final user = await _userIdentityService.getOrCreateUser();
       await _reportService.createReport(
         type: wasteType ?? 'unknown',
@@ -294,7 +375,6 @@ void initState() {
         isSensitive: isSensitive,
       );
 
-      // Show result message
       final resultMessage = '''
 Waste detected: ${wasteType ?? 'unknown'} (severity $adjustedSeverity)
 Estimated impact: ${carbonImpact.toStringAsFixed(1)} kg CO₂e
@@ -311,16 +391,21 @@ Report submitted successfully.
         _isLoading = false;
       });
 
+      _saveChatHistory();
       _scrollToBottom();
+      await _speakResponse(resultMessage);
     } catch (e) {
+      final errText = 'Error capturing report: $e';
       setState(() {
         _messages.add(ChatMessage(
-          text: 'Error capturing report: $e',
+          text: errText,
           isUser: false,
         ));
         _isLoading = false;
       });
+      _saveChatHistory();
       _scrollToBottom();
+      await _speakResponse(errText);
     }
   }
 
@@ -334,7 +419,7 @@ Report submitted successfully.
         isUser: true,
       ));
       _isLoading = true;
-      _axisState = AxisState.processing;
+      _avatarState = 'processing';
       _messageController.clear();
     });
 
@@ -354,24 +439,95 @@ Report submitted successfully.
           executedAction: response.executedAction,
         ));
         _isLoading = false;
-        _axisState = AxisState.idle;
       });
 
+      _saveChatHistory();
       _scrollToBottom();
-      
-      // Speak the response
-    
+      await _speakResponse(response.message);
     } catch (e) {
+      final errText = 'Error: $e';
       setState(() {
         _messages.add(ChatMessage(
-          text: 'Error: $e',
+          text: errText,
           isUser: false,
         ));
         _isLoading = false;
-        _axisState = AxisState.idle;
       });
+      _saveChatHistory();
       _scrollToBottom();
+      await _speakResponse(errText);
     }
+  }
+
+  void _showChatHistoryModal() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF141a24),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return Container(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    "📜 Chat History",
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white70),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              const Divider(color: AppColors.border),
+              Expanded(
+                child: _messages.isEmpty
+                    ? const Center(
+                        child: Text(
+                          "No chat history available",
+                          style: TextStyle(color: AppColors.textSecondary),
+                        ),
+                      )
+                    : ListView.builder(
+                        itemCount: _messages.length,
+                        itemBuilder: (context, index) {
+                          final msg = _messages[index];
+                          final timeStr =
+                              "${msg.timestamp.hour.toString().padLeft(2, '0')}:${msg.timestamp.minute.toString().padLeft(2, '0')}";
+                          return ListTile(
+                            leading: Icon(
+                              msg.isUser ? Icons.person : Icons.smart_toy,
+                              color: msg.isUser ? AppColors.primary : Colors.cyan,
+                            ),
+                            title: Text(
+                              msg.text,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(color: Colors.white),
+                            ),
+                            subtitle: Text(
+                              "${msg.isUser ? 'You' : 'AXIS'} • $timeStr",
+                              style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                            ),
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   void _scrollToBottom() {
@@ -400,12 +556,6 @@ Report submitted successfully.
           ),
         ),
         elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.settings),
-            onPressed: () => _showVoiceSettings(),
-          ),
-        ],
       ),
       body: Column(
         children: [
@@ -415,7 +565,7 @@ Report submitted successfully.
             child: IgnorePointer(
               ignoring: true,
               child: Center(
-                child: AxisAvatar(state: _axisState),
+                child: AxisAvatar(state: _avatarState),
               ),
             ),
           ),
@@ -466,7 +616,7 @@ Report submitted successfully.
       child: ActionChip(
         label: Text(label),
         onPressed: onTap,
-        backgroundColor: AppColors.primary.withOpacity(0.2),
+        backgroundColor: AppColors.primary.withValues(alpha: 0.2),
         labelStyle: const TextStyle(color: AppColors.primary),
       ),
     );
@@ -484,109 +634,98 @@ Report submitted successfully.
         ),
         child: Column(
           children: [
-            // Keypad (shown when toggled)
             if (_showKeypad) _buildKeypad(),
-            // Input row
             Row(
-            children: [
-              // Camera button
-              IconButton(
-                onPressed: _isLoading ? null : _captureAndReport,
-                icon: const Icon(Icons.camera_alt),
-                color: AppColors.primary,
-                style: IconButton.styleFrom(
-                  backgroundColor: AppColors.primary.withOpacity(0.1),
-                ),
-              ),
-              const SizedBox(width: 8),
-              // Mic button
-              IconButton(
-                onPressed: _isLoading ? null : _toggleListening,
-                icon: Icon(_isListening ? Icons.mic : Icons.mic_none),
-                color: _isListening ? Colors.red : AppColors.primary,
-                style: IconButton.styleFrom(
-                  backgroundColor: (_isListening ? Colors.red : AppColors.primary).withOpacity(0.1),
-                ),
-              ),
-              const SizedBox(width: 8),
-              // Barcode button
-              IconButton(
-                onPressed: _isLoading ? null : _scanBarcode,
-                icon: const Icon(Icons.qr_code_scanner),
-                color: AppColors.primary,
-                style: IconButton.styleFrom(
-                  backgroundColor: AppColors.primary.withOpacity(0.1),
-                ),
-              ),
-              const SizedBox(width: 8),
-              // Keypad toggle
-              IconButton(
-                onPressed: () {
-                  setState(() {
-                    _showKeypad = !_showKeypad;
-                  });
-                },
-                icon: Icon(_showKeypad ? Icons.keyboard_arrow_down : Icons.keyboard),
-                color: AppColors.primary,
-                style: IconButton.styleFrom(
-                  backgroundColor: AppColors.primary.withOpacity(0.1),
-                ),
-              ),
-              const SizedBox(width: 8),
-              // History button
-              IconButton(
-                onPressed: () {
-                  // Show history dialog
-                },
-                icon: const Icon(Icons.history),
-                color: AppColors.primary,
-                style: IconButton.styleFrom(
-                  backgroundColor: AppColors.primary.withOpacity(0.1),
-                ),
-              ),
-              const SizedBox(width: 8),
-              // Text input
-              Expanded(
-                child: TextField(
-                  controller: _messageController,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: InputDecoration(
-                    hintText: 'Ask AXIS anything...',
-                    hintStyle: TextStyle(color: AppColors.textSecondary),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(24),
-                      borderSide: BorderSide(color: AppColors.border),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(24),
-                      borderSide: BorderSide(color: AppColors.border),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(24),
-                      borderSide: BorderSide(color: AppColors.primary),
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 12,
-                    ),
+              children: [
+                IconButton(
+                  onPressed: _isLoading ? null : _captureAndReport,
+                  icon: const Icon(Icons.camera_alt),
+                  color: AppColors.primary,
+                  style: IconButton.styleFrom(
+                    backgroundColor: AppColors.primary.withValues(alpha: 0.1),
                   ),
-                  onSubmitted: (_) => _sendMessage(),
                 ),
-              ),
-              const SizedBox(width: 8),
-              // Send button
-              IconButton(
-                onPressed: _isLoading ? null : _sendMessage,
-                icon: const Icon(Icons.send),
-                color: AppColors.primary,
-                style: IconButton.styleFrom(
-                  backgroundColor: AppColors.primary.withOpacity(0.1),
+                const SizedBox(width: 8),
+                IconButton(
+                  onPressed: _isLoading ? null : _toggleListening,
+                  icon: Icon(_isListening ? Icons.mic : Icons.mic_none),
+                  color: _isListening ? Colors.red : AppColors.primary,
+                  style: IconButton.styleFrom(
+                    backgroundColor: (_isListening ? Colors.red : AppColors.primary).withValues(alpha: 0.1),
+                  ),
                 ),
-              ),
-            ],
-          ),
-        ],
-      ),
+                const SizedBox(width: 8),
+                IconButton(
+                  onPressed: _isLoading ? null : _scanBarcode,
+                  icon: const Icon(Icons.qr_code_scanner),
+                  color: AppColors.primary,
+                  style: IconButton.styleFrom(
+                    backgroundColor: AppColors.primary.withValues(alpha: 0.1),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  onPressed: () {
+                    setState(() {
+                      _showKeypad = !_showKeypad;
+                    });
+                  },
+                  icon: Icon(_showKeypad ? Icons.keyboard_arrow_down : Icons.keyboard),
+                  color: AppColors.primary,
+                  style: IconButton.styleFrom(
+                    backgroundColor: AppColors.primary.withValues(alpha: 0.1),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  onPressed: _showChatHistoryModal,
+                  icon: const Icon(Icons.history),
+                  color: AppColors.primary,
+                  style: IconButton.styleFrom(
+                    backgroundColor: AppColors.primary.withValues(alpha: 0.1),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextField(
+                    controller: _messageController,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      hintText: 'Ask AXIS anything...',
+                      hintStyle: TextStyle(color: AppColors.textSecondary),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(24),
+                        borderSide: BorderSide(color: AppColors.border),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(24),
+                        borderSide: BorderSide(color: AppColors.border),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(24),
+                        borderSide: BorderSide(color: AppColors.primary),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 12,
+                      ),
+                    ),
+                    onSubmitted: (_) => _sendMessage(),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  onPressed: _isLoading ? null : _sendMessage,
+                  icon: const Icon(Icons.send),
+                  color: AppColors.primary,
+                  style: IconButton.styleFrom(
+                    backgroundColor: AppColors.primary.withValues(alpha: 0.1),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -660,47 +799,36 @@ Report submitted successfully.
       ),
     );
   }
-
-  void _showVoiceSettings() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Voice Settings'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Voice selection coming soon'),
-            const SizedBox(height: 16),
-            SwitchListTile(
-              title: const Text('Voice Output'),
-              value: true,
-              onChanged: (value) {
-                // Toggle voice output
-              },
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 class ChatMessage {
   final String text;
   final bool isUser;
   final bool executedAction;
+  final DateTime timestamp;
 
   ChatMessage({
     required this.text,
     required this.isUser,
     this.executedAction = false,
-  });
+    DateTime? timestamp,
+  }) : timestamp = timestamp ?? DateTime.now();
+
+  Map<String, dynamic> toJson() => {
+        'text': text,
+        'isUser': isUser,
+        'executedAction': executedAction,
+        'timestamp': timestamp.toIso8601String(),
+      };
+
+  factory ChatMessage.fromJson(Map<String, dynamic> json) => ChatMessage(
+        text: json['text'] as String? ?? '',
+        isUser: json['isUser'] as bool? ?? false,
+        executedAction: json['executedAction'] as bool? ?? false,
+        timestamp: json['timestamp'] != null
+            ? (DateTime.tryParse(json['timestamp'] as String) ?? DateTime.now())
+            : DateTime.now(),
+      );
 }
 
 class ChatBubble extends StatelessWidget {

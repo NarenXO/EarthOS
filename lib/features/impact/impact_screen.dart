@@ -134,11 +134,18 @@ class _ImpactScreenState extends State<ImpactScreen> {
   Future<void> _fetchStats() async {
     try {
       final stats = await _reportService.fetchImpactStats();
+      final totalReports = stats['totalReports'] ?? 0;
+      final verified = stats['verifiedReports'] ?? 0;
+      final carbon = (stats['totalCarbonImpact'] as num?)?.toDouble() ?? 0.0;
+
+      print('Impact fetch: totalReports=$totalReports, verified=$verified, carbon=$carbon');
+
       setState(() {
         _stats = stats;
         _isLoading = false;
       });
     } catch (e) {
+      print('Impact fetch error: $e');
       setState(() {
         _isLoading = false;
       });

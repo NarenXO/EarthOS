@@ -5,7 +5,7 @@
 | Feature: Profile Module
 | Author: Naren
 |--------------------------------------------------------------------------
-| Profile, Rewards, Certificates, and Leaderboards
+| Personal User Profile, Metrics, Achievements, and Certificates
 |--------------------------------------------------------------------------
 */
 
@@ -16,6 +16,7 @@ import 'package:earthos/core/services/user_identity_service.dart';
 import 'package:earthos/features/report/services/report_service.dart';
 import 'package:earthos/features/profile/models/certificate_model.dart';
 import 'package:earthos/features/profile/widgets/environmental_certificate_card.dart';
+import 'package:earthos/features/achievements/achievement_service.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -30,6 +31,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   
   Map<String, dynamic>? _userImpact;
   bool _isLoading = true;
+  String _userName = AppConfig.author;
 
   @override
   void initState() {
@@ -43,6 +45,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final impact = await _reportService.fetchUserImpact(user.id);
       setState(() {
         _userImpact = impact;
+        _userName = user.name.isNotEmpty ? user.name : AppConfig.author;
         _isLoading = false;
       });
     } catch (e) {
@@ -73,10 +76,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             const SizedBox(height: 30),
 
             // ===============================
-            // REWARDS SECTION
+            // PERSONAL IMPACT METRICS (4 CARDS)
             // ===============================
             Text(
-              "Rewards & Achievements",
+              "Your Environmental Impact",
               style: Theme.of(context).textTheme.headlineMedium,
             ),
             const SizedBox(height: 16),
@@ -87,26 +90,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
             const SizedBox(height: 30),
 
             // ===============================
-            // CERTIFICATE SECTION
+            // ACHIEVEMENTS SECTION
             // ===============================
             Text(
-              "Impact Certificates",
+              "🏆 Rewards & Achievements",
               style: Theme.of(context).textTheme.headlineMedium,
             ),
             const SizedBox(height: 16),
-            _buildCertificateCard(),
+            _buildAchievementsSection(),
 
             const SizedBox(height: 30),
 
             // ===============================
-            // LEADERBOARD SECTION
+            // CERTIFICATE SECTION
             // ===============================
             Text(
-              "Leaderboard",
+              "📜 Impact Certificates",
               style: Theme.of(context).textTheme.headlineMedium,
             ),
             const SizedBox(height: 16),
-            _buildLeaderboardPreview(),
+            _buildCertificateCard(),
 
             const SizedBox(height: 40),
           ],
@@ -125,16 +128,38 @@ class _ProfileScreenState extends State<ProfileScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            AppConfig.author,
-            style: Theme.of(context).textTheme.headlineMedium,
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 28,
+                backgroundColor: AppColors.primary.withValues(alpha: 0.2),
+                child: Text(
+                  _userName.isNotEmpty ? _userName[0].toUpperCase() : 'U',
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.primary,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _userName,
+                    style: Theme.of(context).textTheme.headlineMedium,
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    "Level 4 • Environmental Guardian",
+                    style: TextStyle(color: AppColors.textSecondary),
+                  ),
+                ],
+              ),
+            ],
           ),
-          const SizedBox(height: 6),
-          const Text(
-            "Level 4 • Environmental Guardian",
-            style: TextStyle(color: AppColors.textSecondary),
-          ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
           ClipRRect(
             borderRadius: BorderRadius.circular(12),
             child: LinearProgressIndicator(
@@ -155,13 +180,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   // =========================================================
-  // REWARDS GRID
+  // PERSONAL METRICS GRID
   // =========================================================
   Widget _buildRewardsGrid() {
     final totalReports = _userImpact?['totalReports'] ?? 0;
     final verifiedReports = _userImpact?['verifiedReports'] ?? 0;
-    final totalCarbonImpact = _userImpact?['totalCarbonImpact'] ?? 0.0;
-    final totalVerifiedCarbon = _userImpact?['totalVerifiedCarbon'] ?? 0.0;
+    final totalCarbonImpact = (userImpact['totalCarbonImpact'] as num?)?.toDouble() ?? 0.0;
+    final totalVerifiedCarbon = (userImpact['totalVerifiedCarbon'] as num?)?.toDouble() ?? 0.0;
 
     return GridView.count(
       crossAxisCount: 2,
@@ -171,7 +196,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       crossAxisSpacing: 16,
       childAspectRatio: 1.2,
       children: [
-        _RewardCard(title: "Total Reports", value: totalReports.toString()),
+        _RewardCard(title: "Your Reports", value: totalReports.toString()),
         _RewardCard(
           title: "Verified Cleanups",
           value: verifiedReports.toString(),
@@ -188,6 +213,77 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  get userImpact => _userImpact ?? {};
+
+  // =========================================================
+  // ACHIEVEMENTS SECTION
+  // =========================================================
+  Widget _buildAchievementsSection() {
+    final achievements = AchievementService.calculateAchievements(_userImpact);
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: _cardDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: achievements.map((ach) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Row(
+              children: [
+                Text(
+                  ach.icon,
+                  style: TextStyle(
+                    fontSize: 28,
+                    color: ach.isUnlocked ? null : Colors.grey,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            ach.title,
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: ach.isUnlocked ? AppColors.textPrimary : AppColors.textSecondary,
+                            ),
+                          ),
+                          if (ach.isUnlocked)
+                            const Icon(Icons.check_circle, color: AppColors.primary, size: 18),
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        ach.description,
+                        style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                      ),
+                      const SizedBox(height: 6),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(6),
+                        child: LinearProgressIndicator(
+                          value: ach.progress,
+                          minHeight: 6,
+                          backgroundColor: AppColors.border,
+                          color: ach.isUnlocked ? AppColors.primary : Colors.grey.shade600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
   // =========================================================
   // CERTIFICATE CARD
   // =========================================================
@@ -199,7 +295,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            "Impact Certificates",
+            "Environmental Impact Certificate",
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w700,
@@ -208,7 +304,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           const SizedBox(height: 10),
           const Text(
-            "Generate your environmental impact certificate based on verified cleanups.",
+            "Generate your official environmental impact certificate based on verified cleanups.",
             style: TextStyle(color: AppColors.textSecondary),
           ),
           const SizedBox(height: 14),
@@ -230,8 +326,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final user = await _userIdentityService.getOrCreateUser();
     final certificate = Certificate(
       userName: user.name,
-      verifiedCleanups: _userImpact!['verifiedReports'] ?? 0,
-      carbonDiverted: _userImpact!['totalVerifiedCarbon'] ?? 0.0,
+      verifiedCleanups: (_userImpact!['verifiedReports'] as num?)?.toInt() ?? 0,
+      carbonDiverted: (_userImpact!['totalVerifiedCarbon'] as num?)?.toDouble() ?? 0.0,
       generatedAt: DateTime.now(),
     );
 
@@ -246,34 +342,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
       );
     }
-  }
-
-  // =========================================================
-  // LEADERBOARD PREVIEW
-  // =========================================================
-  Widget _buildLeaderboardPreview() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: _cardDecoration(),
-      child: const Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            "Top Contributors",
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              color: AppColors.textPrimary,
-            ),
-          ),
-          SizedBox(height: 8),
-          Text(
-            "1. Alex — 980kg CO₂e\n2. Naren — 540kg CO₂e\n3. Priya — 420kg CO₂e",
-            style: TextStyle(color: AppColors.textSecondary),
-          ),
-        ],
-      ),
-    );
   }
 
   BoxDecoration _cardDecoration() {

@@ -57,44 +57,48 @@ class _ExploreScreenState extends State<ExploreScreen> {
     super.dispose();
   }
 
-  Future<void> _requestLocationPermission() async {
+  Future<void> _initializeLocation() async {
     LocationPermission permission = await Geolocator.checkPermission();
-
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
     }
 
-    if (permission == LocationPermission.deniedForever) {
+    if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Location permission required")),
+        );
+      }
       return;
     }
-  }
 
-  Future<void> _initializeLocation() async {
-    await _requestLocationPermission();
-
-    final position = await Geolocator.getCurrentPosition(
-      desiredAccuracy: LocationAccuracy.high,
-    );
-
-    _currentLatLng = LatLng(position.latitude, position.longitude);
-
-    setState(() {
-      _locationText =
-          "Lat: ${position.latitude.toStringAsFixed(4)}, "
-          "Lng: ${position.longitude.toStringAsFixed(4)}";
-    });
-
-    if (_mapController != null) {
-      _mapController!.animateCamera(
-        CameraUpdate.newCameraPosition(
-          CameraPosition(
-            target: _currentLatLng!,
-            zoom: 16,
-            tilt: 60,
-            bearing: 30,
-          ),
-        ),
+    try {
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
       );
+
+      _currentLatLng = LatLng(position.latitude, position.longitude);
+
+      setState(() {
+        _locationText =
+            "Lat: ${position.latitude.toStringAsFixed(4)}, "
+            "Lng: ${position.longitude.toStringAsFixed(4)}";
+      });
+
+      if (_mapController != null && _currentLatLng != null) {
+        _mapController!.animateCamera(
+          CameraUpdate.newCameraPosition(
+            CameraPosition(
+              target: _currentLatLng!,
+              zoom: 16,
+              tilt: 60,
+              bearing: 30,
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      print('Location fetch error: $e');
     }
   }
 
@@ -315,7 +319,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
               }
             },
             myLocationEnabled: true,
-            myLocationButtonEnabled: false,
+            myLocationButtonEnabled: true,
             compassEnabled: true,
             tiltGesturesEnabled: true,
             zoomControlsEnabled: false,
