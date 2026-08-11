@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:earthos/core/constants/app_colors.dart';
 import 'package:earthos/features/profile/models/certificate_model.dart';
+import '../services/certificate_pdf_service.dart';
 
 class EnvironmentalCertificateCard extends StatelessWidget {
   final Certificate certificate;
@@ -50,6 +51,58 @@ class EnvironmentalCertificateCard extends StatelessWidget {
           _buildCertificateRow(
             "Generated",
             "${certificate.generatedAt.day}/${certificate.generatedAt.month}/${certificate.generatedAt.year}",
+          ),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              ElevatedButton.icon(
+                onPressed: () async {
+                  try {
+                    final file = await CertificatePdfService.generateAndSave(certificate);
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Saved: ${file.path.split('/').last}'),
+                          backgroundColor: const Color(0xFF00C896),
+                        ),
+                      );
+                    }
+                  } catch (e) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+                      );
+                    }
+                  }
+                },
+                icon: const Icon(Icons.download, size: 18),
+                label: const Text('Download PDF'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF00C896),
+                  foregroundColor: Colors.black,
+                ),
+              ),
+              ElevatedButton.icon(
+                onPressed: () async {
+                  try {
+                    await CertificatePdfService.shareCertificate(certificate);
+                  } catch (e) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+                      );
+                    }
+                  }
+                },
+                icon: const Icon(Icons.share, size: 18),
+                label: const Text('Share'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF1A3A2A),
+                  foregroundColor: Colors.white,
+                ),
+              ),
+            ],
           ),
         ],
       ),
