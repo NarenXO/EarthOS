@@ -21,6 +21,7 @@ import 'package:earthos/features/achievements/achievement_service.dart';
 import 'package:earthos/features/achievements/achievement_popup.dart';
 import 'package:earthos/features/level/level_service.dart';
 import 'package:earthos/features/streak/streak_service.dart';
+import 'package:earthos/features/community/kudos_service.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -32,10 +33,13 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   final UserIdentityService _userIdentityService = UserIdentityService();
   final ReportService _reportService = ReportService();
+  final KudosService _kudosService = KudosService();
   
   Map<String, dynamic>? _userImpact;
   Map<String, dynamic>? _levelData;
   Map<String, int>? _streakData;
+  int _kudosCount = 0;
+  List<Map<String, dynamic>> _kudosMessages = [];
   bool _isLoading = true;
   String _userName = AppConfig.author;
 
@@ -58,6 +62,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       );
 
       final streakData = await StreakService.getStreak();
+
+      final kudosCount = await _kudosService.getKudosReceived(user.id);
+      final kudosMessages = await _kudosService.getKudosMessages(user.id);
 
       final achievements = AchievementService.calculateAchievements(impact);
       print('Achievements: unlocked=${achievements.where((a) => a.unlocked).length}/${achievements.length}');
@@ -88,6 +95,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _userImpact = impact;
         _levelData = levelData;
         _streakData = streakData;
+        _kudosCount = kudosCount;
+        _kudosMessages = kudosMessages;
         _userName = user.name.isNotEmpty ? user.name : AppConfig.author;
         _isLoading = false;
       });
@@ -116,6 +125,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
             // STREAK CARD
             // ===============================
             _buildStreakCard(),
+
+            const SizedBox(height: 20),
+
+            // ===============================
+            // KUDOS RECEIVED CARD
+            // ===============================
+            _buildKudosCard(),
 
             const SizedBox(height: 20),
 
@@ -214,6 +230,144 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // =========================================================
+  // KUDOS RECEIVED CARD
+  // =========================================================
+  Widget _buildKudosCard() {
+    return GestureDetector(
+      onTap: () => _showKudosDialog(),
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: AppColors.card,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.red, width: 1),
+        ),
+        child: Row(
+          children: [
+            const Icon(
+              Icons.favorite,
+              color: Colors.red,
+              size: 32,
+            ),
+            const SizedBox(width: 12),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      '$_kudosCount',
+                      style: const TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.red,
+                      ),
+                    ),
+                    const Text(
+                      ' Kudos Received',
+                      style: TextStyle(fontSize: 16),
+                    ),
+                  ],
+                ),
+                const Text(
+                  'Tap to view messages',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showKudosDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.favorite, color: Colors.red),
+            SizedBox(width: 8),
+            Text('Kudos Received'),
+          ],
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: _kudosMessages.isEmpty
+              ? const Text('No kudos received yet')
+              : ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: _kudosMessages.length,
+                  itemBuilder: (context, index) {
+                    final kudo = _kudosMessages[index];
+                    final fromUser = kudo['from_user_name'] as String? ?? 'Anonymous';
+                    final message = kudo['message'] as String? ?? '';
+                    final createdAt = kudo['created_at'] as String?;
+                    
+                    String timeAgo = 'Recently';
+                    if (createdAt != null) {
+                      final dt = DateTime.parse(createdAt);
+                      final diff = DateTime.now().difference(dt);
+                      if (diff.inDays > 0) {
+                        timeAgo = '${diff.inDays}d ago';
+                      } else if (diff.inHours > 0) {
+                        timeAgo = '${diff.inHours}h ago';
+                      } else if (diff.inMinutes > 0) {
+                        timeAgo = '${diff.inMinutes}m ago';
+                      }
+                    }
+
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Text(
+                                  fromUser,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                const Spacer(),
+                                Text(
+                                  timeAgo,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: AppColors.textSecondary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            if (message.isNotEmpty) ...[
+                              const SizedBox(height: 4),
+                              Text(message),
+                            ],
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
           ),
         ],
       ),

@@ -224,4 +224,54 @@ class ReportService {
           .eq('id', eventId);
     }
   }
+
+  Future<List<Map<String, dynamic>>> fetchTransformations() async {
+    try {
+      final data = await _supabase
+          .from(_tableName)
+          .select()
+          .eq('status', 'verified')
+          .not('photo_before', 'is', null)
+          .not('photo_after', 'is', null)
+          .order('verified_at', ascending: false)
+          .limit(30);
+      return List<Map<String, dynamic>>.from(data);
+    } catch (e) {
+      print('Transformations error: $e');
+      return [];
+    }
+  }
+
+  Future<void> signUpAsVolunteer({
+    required String eventId,
+    required String userId,
+    required String userName,
+    required String role,
+  }) async {
+    try {
+      await _supabase.from('volunteer_signups').insert({
+        'event_id': eventId,
+        'user_id': userId,
+        'user_name': userName,
+        'role': role,
+      });
+      print('Volunteer signed up: $userName as $role');
+    } catch (e) {
+      print('Volunteer signup error: $e');
+      rethrow;
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> fetchVolunteers(String eventId) async {
+    try {
+      final data = await _supabase
+          .from('volunteer_signups')
+          .select()
+          .eq('event_id', eventId);
+      return List<Map<String, dynamic>>.from(data);
+    } catch (e) {
+      print('Fetch volunteers error: $e');
+      return [];
+    }
+  }
 }

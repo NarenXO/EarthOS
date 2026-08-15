@@ -14,6 +14,9 @@ import 'package:earthos/core/constants/app_colors.dart';
 import 'package:earthos/core/services/user_identity_service.dart';
 import 'package:earthos/features/report/services/report_service.dart';
 import 'package:earthos/features/report/models/report_model.dart';
+import 'package:earthos/features/community/services/community_feed_service.dart';
+import 'package:earthos/features/community/kudos_service.dart';
+import 'package:earthos/features/community/gallery_screen.dart';
 
 class LeaderboardScreen extends StatefulWidget {
   const LeaderboardScreen({super.key});
@@ -25,9 +28,13 @@ class LeaderboardScreen extends StatefulWidget {
 class _LeaderboardScreenState extends State<LeaderboardScreen> {
   final ReportService _reportService = ReportService();
   final UserIdentityService _userIdentityService = UserIdentityService();
+  final CommunityFeedService _feedService = CommunityFeedService();
+  final KudosService _kudosService = KudosService();
   
   List<Map<String, dynamic>> _leaderboard = [];
   List<Report> _upcomingEvents = [];
+  List<Map<String, dynamic>> _feedActivities = [];
+  List<Map<String, dynamic>> _transformations = [];
   bool _isLoading = true;
 
   @override
@@ -40,10 +47,14 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     try {
       final leaderboard = await _reportService.fetchLeaderboard();
       final events = await _reportService.fetchUpcomingEvents();
-      print('Leaderboard screen loaded: ${leaderboard.length} entries, ${events.length} events');
+      final feed = await _feedService.fetchRecentActivity(limit: 20);
+      final transformations = await _reportService.fetchTransformations();
+      print('Leaderboard screen loaded: ${leaderboard.length} entries, ${events.length} events, ${feed.length} feed items, ${transformations.length} transformations');
       setState(() {
         _leaderboard = leaderboard;
         _upcomingEvents = events;
+        _feedActivities = feed;
+        _transformations = transformations;
         _isLoading = false;
       });
     } catch (e) {
@@ -90,29 +101,213 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   }
 
   Widget _buildLeaderboardTab() {
-    return _leaderboard.isEmpty
-        ? const Center(
-            child: Text(
-              "No verified cleanups yet",
-              style: TextStyle(color: AppColors.textSecondary),
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ===============================
+          // LIVE COMMUNITY FEED
+          // ===============================
+          _buildLiveFeedSection(),
+          
+          const SizedBox(height: 24),
+          
+          // ===============================
+          // LEADERBOARD
+          // ===============================
+          Text(
+            'Leaderboard',
+            style: Theme.of(context).textTheme.headlineMedium,
+          ),
+          const SizedBox(height: 16),
+          _leaderboard.isEmpty
+              ? const Center(
+                  child: Text(
+                    "No verified cleanups yet",
+                    style: TextStyle(color: AppColors.textSecondary),
+                  ),
+                )
+              : ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: _leaderboard.length,
+                  itemBuilder: (context, index) {
+                    final entry = _leaderboard[index];
+                    final rank = index + 1;
+                    final isTop3 = rank <= 3;
+                    return _LeaderboardTile(
+                      rank: rank,
+                      userName: entry['userName'] as String,
+                      carbonDiverted: entry['carbonDiverted'] as double,
+                      verifiedCount: entry['verifiedCount'] as int,
+                      isTop3: isTop3,
+                      onKudos: () => _sendKudos(entry['userId'] as String, entry['userName'] as String),
+                    );
+                  },
+                ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLiveFeedSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.people, color: Color(0xFF00C896)),
+            const SizedBox(width: 8),
+            Text(
+              'Live Community Feed',
+              style: Theme.of(context).textTheme.titleLarge,
             ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Container(
+          height: 300,
+          decoration: BoxDecoration(
+            color: AppColors.card,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFF00C896), width: 1),
+          ),
+          child: _feedActivities.isEmpty
+              ? const Center(
+                  child: Text(
+                    'No recent activity',
+                    style: TextStyle(color: AppColors.textSecondary),
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.all(12),
+                  itemCount: _feedActivities.length,
+                  itemBuilder: (context, index) {
+                    final activity = _feedActivities[index];
+                    return _FeedActivityTile(activity: activity);
+                  },
+                ),
+        ),
+        const SizedBox(height: 24),
+        // ===============================
+        // BEFORE/AFTER GALLERY
+        // ===============================
+        Row(
+          children: [
+            const Icon(Icons.photo_library, color: Color(0xFF00C896)),
+            const SizedBox(width: 8),
+            Text(
+              'Before/After Gallery',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const Spacer(),
+            TextButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const GalleryScreen(),
+                  ),
+                );
+              },
+              child: const Text('View All'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        if (_transformations.isEmpty)
+          const Text(
+            'No transformations yet',
+            style: TextStyle(color: AppColors.textSecondary),
           )
-        : ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: _leaderboard.length,
-            itemBuilder: (context, index) {
-              final entry = _leaderboard[index];
-              final rank = index + 1;
-              final isTop3 = rank <= 3;
-              return _LeaderboardTile(
-                rank: rank,
-                userName: entry['userName'] as String,
-                carbonDiverted: entry['carbonDiverted'] as double,
-                verifiedCount: entry['verifiedCount'] as int,
-                isTop3: isTop3,
-              );
-            },
+        else
+          SizedBox(
+            height: 150,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              itemCount: _transformations.take(5).length,
+              itemBuilder: (context, index) {
+                final transformation = _transformations[index];
+                return _GalleryPreviewTile(
+                  transformation: transformation,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const GalleryScreen(),
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+      ],
+    );
+  }
+
+  Future<void> _sendKudos(String toUserId, String toUserName) async {
+    final currentUser = await _userIdentityService.getOrCreateUser();
+    if (currentUser.id == toUserId) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('You cannot send kudos to yourself')),
+        );
+      }
+      return;
+    }
+
+    final controller = TextEditingController();
+    final message = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Send Kudos to $toUserName'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(
+            hintText: 'Add a message (optional)',
+          ),
+          maxLines: 3,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, controller.text),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF00C896),
+            ),
+            child: const Text('Send Kudos'),
+          ),
+        ],
+      ),
+    );
+
+    if (message != null) {
+      try {
+        await _kudosService.sendKudos(
+          fromUserId: currentUser.id,
+          fromUserName: currentUser.name,
+          toUserId: toUserId,
+          toUserName: toUserName,
+          message: message.isNotEmpty ? message : null,
+        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Kudos sent!')),
           );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error sending kudos: $e')),
+          );
+        }
+      }
+    }
   }
 
   Widget _buildEventsTab() {
@@ -190,6 +385,7 @@ class _LeaderboardTile extends StatelessWidget {
   final double carbonDiverted;
   final int verifiedCount;
   final bool isTop3;
+  final VoidCallback? onKudos;
 
   const _LeaderboardTile({
     required this.rank,
@@ -197,6 +393,7 @@ class _LeaderboardTile extends StatelessWidget {
     required this.carbonDiverted,
     required this.verifiedCount,
     required this.isTop3,
+    this.onKudos,
   });
 
   @override
@@ -259,6 +456,16 @@ class _LeaderboardTile extends StatelessWidget {
                   color: AppColors.textSecondary,
                 ),
               ),
+              if (onKudos != null) ...[
+                const SizedBox(height: 8),
+                IconButton(
+                  onPressed: onKudos,
+                  icon: const Icon(Icons.favorite, color: Colors.red),
+                  iconSize: 20,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                ),
+              ],
             ],
           ),
         ],
@@ -293,6 +500,165 @@ class _LeaderboardTile extends StatelessWidget {
             fontWeight: FontWeight.w700,
             fontSize: 16,
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FeedActivityTile extends StatelessWidget {
+  final Map<String, dynamic> activity;
+
+  const _FeedActivityTile({required this.activity});
+
+  @override
+  Widget build(BuildContext context) {
+    final icon = activity['icon'] as String? ?? '🌱';
+    final user = activity['user'] as String? ?? 'Anonymous';
+    final action = activity['action'] as String? ?? 'took action';
+    final ago = activity['ago'] as String? ?? 'just now';
+    final carbon = activity['carbon'] as num? ?? 0;
+    final title = activity['title'] as String? ?? '';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Text(
+            icon,
+            style: const TextStyle(fontSize: 24),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '$user $action',
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                if (title.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                ago,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              if (carbon > 0) ...[
+                const SizedBox(height: 2),
+                Text(
+                  '${carbon.toStringAsFixed(1)} kg',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: Color(0xFF00C896),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GalleryPreviewTile extends StatelessWidget {
+  final Map<String, dynamic> transformation;
+  final VoidCallback onTap;
+
+  const _GalleryPreviewTile({
+    required this.transformation,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final photoBefore = transformation['photo_before'] as String?;
+    final userName = transformation['created_by_name'] as String? ?? 'Anonymous';
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 120,
+        margin: const EdgeInsets.only(right: 12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(8),
+          color: AppColors.card,
+        ),
+        child: Stack(
+          children: [
+            if (photoBefore != null)
+              Positioned.fill(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.network(
+                    photoBefore,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      return Container(
+                        color: AppColors.card,
+                        child: const Center(
+                          child: Icon(Icons.broken_image, size: 32),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            Positioned.fill(
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(8),
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.transparent,
+                      Colors.black.withOpacity(0.7),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              bottom: 4,
+              left: 4,
+              right: 4,
+              child: Text(
+                userName,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -379,7 +745,7 @@ class _EventCard extends StatelessWidget {
   }
 }
 
-class _EventDetailDialog extends StatelessWidget {
+class _EventDetailDialog extends StatefulWidget {
   final Report event;
   final VoidCallback onJoin;
 
@@ -389,42 +755,214 @@ class _EventDetailDialog extends StatelessWidget {
   });
 
   @override
+  State<_EventDetailDialog> createState() => _EventDetailDialogState();
+}
+
+class _EventDetailDialogState extends State<_EventDetailDialog> {
+  final ReportService _reportService = ReportService();
+  final UserIdentityService _userIdentityService = UserIdentityService();
+  List<Map<String, dynamic>> _volunteers = [];
+  bool _isLoadingVolunteers = false;
+  final List<String> _roles = [
+    'Waste Collector',
+    'Photo Documenter',
+    'Sorter',
+    'Team Leader',
+    'First Aid',
+    'Refreshments',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchVolunteers();
+  }
+
+  Future<void> _fetchVolunteers() async {
+    setState(() => _isLoadingVolunteers = true);
+    final volunteers = await _reportService.fetchVolunteers(widget.event.id);
+    setState(() {
+      _volunteers = volunteers;
+      _isLoadingVolunteers = false;
+    });
+  }
+
+  Future<void> _signUpForRole(String role) async {
+    final currentUser = await _userIdentityService.getOrCreateUser();
+    
+    // Check if already signed up for this event
+    final alreadySignedUp = _volunteers.any(
+      (v) => v['user_id'] == currentUser.id,
+    );
+    
+    if (alreadySignedUp) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('You are already signed up for this event')),
+        );
+      }
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Sign up as $role'),
+        content: Text('Are you sure you want to sign up as $role?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF00C896),
+            ),
+            child: const Text('Confirm'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        await _reportService.signUpAsVolunteer(
+          eventId: widget.event.id,
+          userId: currentUser.id,
+          userName: currentUser.name,
+          role: role,
+        );
+        await _fetchVolunteers();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Successfully signed up!')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error signing up: $e')),
+          );
+        }
+      }
+    }
+  }
+
+  int _getRoleCount(String role) {
+    return _volunteers.where((v) => v['role'] == role).length;
+  }
+
+  List<String> _getRoleUsers(String role) {
+    return _volunteers
+        .where((v) => v['role'] == role)
+        .map((v) => v['user_name'] as String? ?? 'Unknown')
+        .toList();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text(event.title ?? event.type),
+      title: Text(widget.event.title ?? widget.event.type),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (event.description != null) ...[
-              Text(event.description!),
+            if (widget.event.description != null) ...[
+              Text(widget.event.description!),
               const SizedBox(height: 16),
             ],
-            if (event.eventDate != null) ...[
-              _DetailRow(label: 'Date', value: event.eventDate!),
+            if (widget.event.eventDate != null) ...[
+              _DetailRow(label: 'Date', value: widget.event.eventDate!),
               const SizedBox(height: 8),
             ],
-            if (event.venue != null) ...[
-              _DetailRow(label: 'Venue', value: event.venue!),
+            if (widget.event.venue != null) ...[
+              _DetailRow(label: 'Venue', value: widget.event.venue!),
               const SizedBox(height: 8),
             ],
-            _DetailRow(label: 'Organizer', value: event.createdByName),
+            _DetailRow(label: 'Organizer', value: widget.event.createdByName),
             const SizedBox(height: 8),
             _DetailRow(
               label: 'Participants',
-              value: '${event.participantsCount ?? 0}',
+              value: '${widget.event.participantsCount ?? 0}',
             ),
-            if (event.maxParticipants != null) ...[
+            if (widget.event.maxParticipants != null) ...[
               const SizedBox(height: 4),
               Text(
-                'Max: ${event.maxParticipants}',
+                'Max: ${widget.event.maxParticipants}',
                 style: const TextStyle(
                   fontSize: 12,
                   color: AppColors.textSecondary,
                 ),
               ),
             ],
+            const SizedBox(height: 24),
+            const Text(
+              'Volunteer Roles',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+              ),
+            ),
+            const SizedBox(height: 12),
+            if (_isLoadingVolunteers)
+              const CircularProgressIndicator()
+            else
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: _roles.map((role) {
+                  final count = _getRoleCount(role);
+                  final users = _getRoleUsers(role);
+                  return InkWell(
+                    onTap: () => _signUpForRole(role),
+                    borderRadius: BorderRadius.circular(16),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: const Color(0xFF00C896)),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            role,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '$count signed up',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                          if (users.isNotEmpty) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              users.join(', '),
+                              style: const TextStyle(
+                                fontSize: 10,
+                                color: AppColors.textSecondary,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
           ],
         ),
       ),
@@ -434,7 +972,7 @@ class _EventDetailDialog extends StatelessWidget {
           child: const Text('Close'),
         ),
         ElevatedButton(
-          onPressed: onJoin,
+          onPressed: widget.onJoin,
           style: ElevatedButton.styleFrom(
             backgroundColor: AppColors.primary,
           ),
