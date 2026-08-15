@@ -19,6 +19,8 @@ import 'package:earthos/core/constants/app_colors.dart';
 import 'package:earthos/core/services/forest_service.dart';
 import 'package:earthos/core/services/cleanup_verification_service.dart';
 import 'package:earthos/core/services/health_impact_service.dart';
+import 'package:earthos/core/services/water_body_service.dart';
+import 'package:earthos/core/services/species_impact_service.dart';
 import 'package:earthos/features/report/services/report_service.dart';
 import 'package:earthos/features/report/models/report_model.dart';
 import 'package:earthos/features/achievements/achievement_service.dart';
@@ -42,6 +44,8 @@ class _ExploreScreenState extends State<ExploreScreen> {
   final Set<Circle> _circles = {};
   StreamSubscription<List<Report>>? _reportsSubscription;
   final Map<String, String> _healthImpactCache = {};
+  final Map<String, Map<String, dynamic>> _waterBodyCache = {};
+  final Map<String, Map<String, dynamic>> _speciesCache = {};
 
   static const CameraPosition _initialCameraPosition = CameraPosition(
     target: LatLng(28.6139, 77.2090),
@@ -434,7 +438,179 @@ class _ExploreScreenState extends State<ExploreScreen> {
                     );
                   },
                 ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Water Contamination Risk',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                FutureBuilder<Map<String, dynamic>>(
+                  future: _getWaterBodyData(report),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const CircularProgressIndicator();
+                    }
+                    if (snapshot.hasError) {
+                      return Text('Error: ${snapshot.error}');
+                    }
+                    final waterData = snapshot.data ?? {};
+                    final atRisk = waterData['atRisk'] as bool? ?? false;
+                    final nearby = waterData['nearby'] as int? ?? 0;
+                    final bodies = waterData['bodies'] as List? ?? [];
+
+                    if (!atRisk) {
+                      return const Text(
+                        'No water bodies detected within 500m',
+                        style: TextStyle(fontSize: 14, color: Colors.green),
+                      );
+                    }
+
+                    final bodyNames = bodies
+                        .map((b) => b['name'] as String? ?? 'Water body')
+                        .take(3)
+                        .join(', ');
+
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.red.withOpacity(0.1),
+                            border: Border.all(color: Colors.red),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.water_damage, color: Colors.red),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  '⚠️ Water Contamination Risk - $nearby water body/bodies within 500m: $bodyNames',
+                                  style: const TextStyle(fontSize: 14),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.red,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text(
+                            '+2 severity flag',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
               ],
+              const SizedBox(height: 16),
+              const Text(
+                'Wildlife Impact',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
+              const SizedBox(height: 8),
+              FutureBuilder<Map<String, dynamic>>(
+                future: _getSpeciesData(report),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const CircularProgressIndicator();
+                  }
+                  if (snapshot.hasError) {
+                    return Text('Error: ${snapshot.error}');
+                  }
+                  final speciesData = snapshot.data ?? {};
+                  final count = speciesData['count'] as int? ?? 0;
+                  final species = speciesData['species'] as List? ?? [];
+
+                  if (count == 0) {
+                    return const Text(
+                      'No threatened species data available',
+                      style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
+                    );
+                  }
+
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '$count threatened species observed nearby in last year',
+                        style: const TextStyle(fontSize: 14),
+                      ),
+                      if (count > 0) ...[
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.orange.withOpacity(0.1),
+                            border: Border.all(color: Colors.orange),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            'This waste may harm local wildlife',
+                            style: const TextStyle(
+                              fontSize: 14,
+                              color: Colors.orange,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        ...species.take(5).map((s) {
+                          final name = s['name'] as String? ?? 'Unknown';
+                          final iconicTaxon = s['iconicTaxon'] as String? ?? 'Animal';
+                          IconData speciesIcon;
+                          if (iconicTaxon.toLowerCase().contains('bird')) {
+                            speciesIcon = Icons.flight;
+                          } else if (iconicTaxon.toLowerCase().contains('mammal')) {
+                            speciesIcon = Icons.pets;
+                          } else if (iconicTaxon.toLowerCase().contains('reptile')) {
+                            speciesIcon = Icons.cruelty_free;
+                          } else if (iconicTaxon.toLowerCase().contains('amphibian')) {
+                            speciesIcon = Icons.terrain;
+                          } else if (iconicTaxon.toLowerCase().contains('insect')) {
+                            speciesIcon = Icons.bug_report;
+                          } else {
+                            speciesIcon = Icons.eco;
+                          }
+
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 4),
+                            child: Row(
+                              children: [
+                                Icon(speciesIcon, size: 16, color: Colors.orange),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    name,
+                                    style: const TextStyle(fontSize: 13),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }),
+                      ],
+                    ],
+                  );
+                },
+              ),
             ],
           ),
         ),
@@ -490,6 +666,34 @@ class _ExploreScreenState extends State<ExploreScreen> {
 
     _healthImpactCache[report.id] = impact;
     return impact;
+  }
+
+  Future<Map<String, dynamic>> _getWaterBodyData(Report report) async {
+    if (_waterBodyCache.containsKey(report.id)) {
+      return _waterBodyCache[report.id]!;
+    }
+
+    final waterData = await WaterBodyService.checkNearbyWater(
+      report.lat,
+      report.lng,
+    );
+
+    _waterBodyCache[report.id] = waterData;
+    return waterData;
+  }
+
+  Future<Map<String, dynamic>> _getSpeciesData(Report report) async {
+    if (_speciesCache.containsKey(report.id)) {
+      return _speciesCache[report.id]!;
+    }
+
+    final speciesData = await SpeciesImpactService.fetchNearbySpecies(
+      report.lat,
+      report.lng,
+    );
+
+    _speciesCache[report.id] = speciesData;
+    return speciesData;
   }
 
   @override

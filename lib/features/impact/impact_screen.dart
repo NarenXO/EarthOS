@@ -16,6 +16,8 @@ import 'package:earthos/core/services/forest_service.dart';
 import 'package:earthos/core/services/risk_engine.dart';
 import 'package:earthos/core/services/trend_service.dart';
 import 'package:earthos/core/services/recommendation_engine.dart';
+import 'package:earthos/core/services/air_quality_service.dart';
+import 'package:earthos/core/services/weather_service.dart';
 import 'package:earthos/features/report/services/report_service.dart';
 import 'package:earthos/features/axis/services/system_context_service.dart';
 import 'package:earthos/core/services/user_identity_service.dart';
@@ -38,6 +40,8 @@ class _ImpactScreenState extends State<ImpactScreen> {
   Map<String, dynamic>? _forestAlerts;
   Map<String, dynamic>? _systemContext;
   Map<String, dynamic>? _trends;
+  Map<String, dynamic>? _airQuality;
+  Map<String, dynamic>? _weather;
   List<String>? _recommendations;
   double? _riskScore;
   bool _isLoading = true;
@@ -51,6 +55,8 @@ class _ImpactScreenState extends State<ImpactScreen> {
     _fetchForestAlerts();
     _fetchSystemContext();
     _fetchTrends();
+    _fetchAirQuality();
+    _fetchWeather();
   }
 
   Future<void> _fetchTrends() async {
@@ -170,6 +176,38 @@ class _ImpactScreenState extends State<ImpactScreen> {
     }
   }
 
+  Future<void> _fetchAirQuality() async {
+    if (_currentPosition == null) return;
+
+    try {
+      final aqi = await AirQualityService.fetchAQI(
+        _currentPosition!.latitude,
+        _currentPosition!.longitude,
+      );
+      setState(() {
+        _airQuality = aqi;
+      });
+    } catch (e) {
+      // Silently fail, keep empty data
+    }
+  }
+
+  Future<void> _fetchWeather() async {
+    if (_currentPosition == null) return;
+
+    try {
+      final weather = await WeatherService.fetchWeather(
+        _currentPosition!.latitude,
+        _currentPosition!.longitude,
+      );
+      setState(() {
+        _weather = weather;
+      });
+    } catch (e) {
+      // Silently fail, keep empty data
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -182,6 +220,20 @@ class _ImpactScreenState extends State<ImpactScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+
+            // ===============================
+            // AIR QUALITY CARD
+            // ===============================
+            _buildAirQualityCard(),
+
+            const SizedBox(height: 20),
+
+            // ===============================
+            // WEATHER + CLEANUP CARD
+            // ===============================
+            _buildWeatherCard(),
+
+            const SizedBox(height: 30),
 
             // ===============================
             // GLOBAL IMPACT SECTION
@@ -282,6 +334,193 @@ class _ImpactScreenState extends State<ImpactScreen> {
             const SizedBox(height: 40),
           ],
         ),
+      ),
+    );
+  }
+
+  // =========================================================
+  // AIR QUALITY CARD
+  // =========================================================
+  Widget _buildAirQualityCard() {
+    if (_airQuality == null) {
+      return const SizedBox.shrink();
+    }
+
+    final aqi = _airQuality!['aqi'] as int? ?? 0;
+    final category = _airQuality!['category'] as String? ?? 'Unknown';
+    final city = _airQuality!['city'] as String? ?? 'Unknown';
+    final color = _airQuality!['color'] as int? ?? 0xFF888888;
+    final advice = _airQuality!['healthAdvice'] as String? ?? '';
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Color(color).withOpacity(0.2),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Color(color), width: 2),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.air, size: 24),
+              const SizedBox(width: 8),
+              Text(
+                'Air Quality',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Text(
+                '$aqi',
+                style: TextStyle(
+                  fontSize: 48,
+                  fontWeight: FontWeight.bold,
+                  color: Color(color),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      category,
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: Color(color),
+                      ),
+                    ),
+                    Text(
+                      city,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            advice,
+            style: const TextStyle(fontSize: 14),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // =========================================================
+  // WEATHER + CLEANUP CARD
+  // =========================================================
+  Widget _buildWeatherCard() {
+    if (_weather == null) {
+      return const SizedBox.shrink();
+    }
+
+    final temp = _weather!['temp'] as double? ?? 0.0;
+    final condition = _weather!['condition'] as String? ?? 'Unknown';
+    final description = _weather!['description'] as String? ?? '';
+    final humidity = _weather!['humidity'] as int? ?? 0;
+    final windSpeed = _weather!['windSpeed'] as double? ?? 0.0;
+    final recommendation = _weather!['cleanupRecommendation'] as String? ?? '';
+    final suitable = _weather!['suitable'] as bool? ?? false;
+
+    IconData weatherIcon;
+    if (condition.toLowerCase().contains('rain')) {
+      weatherIcon = Icons.water_drop;
+    } else if (condition.toLowerCase().contains('cloud')) {
+      weatherIcon = Icons.cloud;
+    } else if (condition.toLowerCase().contains('clear')) {
+      weatherIcon = Icons.wb_sunny;
+    } else {
+      weatherIcon = Icons.cloud_circle;
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: _cardDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(weatherIcon, size: 24),
+              const SizedBox(width: 8),
+              Text(
+                'Weather + Cleanup',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Text(
+                '${temp.toStringAsFixed(1)}°C',
+                style: const TextStyle(
+                  fontSize: 36,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      description,
+                      style: const TextStyle(fontSize: 16),
+                    ),
+                    Text(
+                      'Humidity: $humidity% | Wind: ${windSpeed.toStringAsFixed(1)} m/s',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: suitable 
+                  ? const Color(0xFF00C896).withOpacity(0.2)
+                  : Colors.orange.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: suitable ? const Color(0xFF00C896) : Colors.orange,
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  suitable ? Icons.check_circle : Icons.info,
+                  color: suitable ? const Color(0xFF00C896) : Colors.orange,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    recommendation,
+                    style: const TextStyle(fontSize: 14),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
