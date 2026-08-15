@@ -26,6 +26,8 @@ import 'package:earthos/core/services/risk_engine.dart';
 import 'package:earthos/core/services/recommendation_engine.dart';
 import 'package:earthos/core/services/trend_service.dart';
 import 'package:earthos/core/services/fake_report_detection_service.dart';
+import 'package:earthos/core/services/composting_service.dart';
+import 'package:earthos/core/services/recycling_route_service.dart';
 import 'package:earthos/features/report/services/report_service.dart';
 import 'package:earthos/features/axis/services/axis_service.dart';
 import 'package:earthos/features/axis/services/product_service.dart';
@@ -735,6 +737,173 @@ Report submitted successfully.
     );
   }
 
+  void _showCompostingGuide() async {
+    final position = await Geolocator.getCurrentPosition();
+    final location = '${position.latitude.toStringAsFixed(2)}, ${position.longitude.toStringAsFixed(2)}';
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.compost, color: Colors.green),
+            SizedBox(width: 8),
+            Text('Composting Guide'),
+          ],
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Quick Tips:', style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              ...CompostingService.quickTips.map((tip) {
+                final icon = _getCompostIcon(tip['icon'] as String);
+                return Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(icon, size: 20, color: tip['icon'] == 'warning' ? Colors.red : Colors.green),
+                            const SizedBox(width: 8),
+                            Text(tip['title'] as String, style: const TextStyle(fontWeight: FontWeight.bold)),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text('Items: ${(tip['items'] as List).join(', ')}'),
+                        Text('Time: ${tip['time']}'),
+                      ],
+                    ),
+                  ),
+                );
+              }),
+              const SizedBox(height: 16),
+              const Text('AI Personalized Guide:', style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              FutureBuilder<String>(
+                future: CompostingService.getPersonalizedGuide(
+                  wasteType: 'organic waste',
+                  location: location,
+                ),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const CircularProgressIndicator();
+                  }
+                  return Text(snapshot.data ?? 'Unable to load guide');
+                },
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  IconData _getCompostIcon(String icon) {
+    switch (icon) {
+      case 'kitchen': return Icons.restaurant;
+      case 'yard': return Icons.park;
+      case 'paper': return Icons.description;
+      case 'warning': return Icons.warning;
+      default: return Icons.eco;
+    }
+  }
+
+  void _showRecyclingFinder() async {
+    final position = await Geolocator.getCurrentPosition();
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.recycling, color: Colors.blue),
+            SizedBox(width: 8),
+            Text('Find Recycling Facility'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              decoration: const InputDecoration(
+                hintText: 'Enter waste type (e.g., plastic, e-waste)',
+                border: OutlineInputBorder(),
+              ),
+              onSubmitted: (wasteType) async {
+                Navigator.pop(context);
+                final result = await RecyclingRouteService.findNearestFacility(
+                  lat: position.latitude,
+                  lng: position.longitude,
+                  wasteType: wasteType,
+                );
+                
+                if (mounted) {
+                  _showRecyclingResult(result);
+                }
+              },
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showRecyclingResult(Map<String, dynamic> result) {
+    if (!mounted) return;
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Recycling Facility'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (result['found'] == true) ...[
+              Text('Facility: ${result['facility']?['name'] ?? 'Unknown'}'),
+              Text('Distance: ${(result['facility']?['distance'] as double?).toStringAsFixed(2)} km'),
+              Text('${result['totalNearby']} facilities within 5km'),
+              const SizedBox(height: 16),
+              ElevatedButton.icon(
+                onPressed: () {
+                  // Launch directions URL
+                },
+                icon: const Icon(Icons.directions),
+                label: const Text('Get Directions'),
+              ),
+            ] else ...[
+              Text(result['message'] as String? ?? 'No facilities found'),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
@@ -805,6 +974,8 @@ Report submitted successfully.
         children: [
           _buildCommandChip('Report Waste', () => _executePredefinedCommand('report waste')),
           _buildCommandChip('Cleanup Event', () => _executePredefinedCommand('create cleanup event')),
+          _buildCommandChip('Composting Guide', () => _showCompostingGuide()),
+          _buildCommandChip('Find Recycling', () => _showRecyclingFinder()),
           _buildCommandChip('Risk Status', () => _executePredefinedCommand('risk')),
           _buildCommandChip('Trends', () => _executePredefinedCommand('trends')),
           _buildCommandChip('Recommend', () => _executePredefinedCommand('recommend')),

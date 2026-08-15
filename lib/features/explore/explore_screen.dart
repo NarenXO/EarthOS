@@ -22,11 +22,14 @@ import 'package:earthos/core/services/health_impact_service.dart';
 import 'package:earthos/core/services/water_body_service.dart';
 import 'package:earthos/core/services/species_impact_service.dart';
 import 'package:earthos/core/services/wildlife_alert_service.dart';
+import 'package:earthos/core/services/composting_service.dart';
+import 'package:earthos/core/services/recycling_route_service.dart';
 import 'package:earthos/features/report/services/report_service.dart';
 import 'package:earthos/features/report/models/report_model.dart';
 import 'package:earthos/features/achievements/achievement_service.dart';
 import 'package:earthos/features/achievements/achievement_popup.dart';
 import 'package:earthos/features/emergency/emergency_service.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class ExploreScreen extends StatefulWidget {
   const ExploreScreen({super.key});
@@ -753,6 +756,117 @@ class _ExploreScreenState extends State<ExploreScreen> {
                   );
                 },
               ),
+              const SizedBox(height: 16),
+              // Composting Options for organic waste
+              if (report.type == 'dumping' && CompostingService.isCompostable(report.aiClassification ?? report.type))
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withValues(alpha: 0.1),
+                    border: Border.all(color: Colors.green),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(Icons.compost, color: Colors.green),
+                          SizedBox(width: 8),
+                          Text(
+                            'Composting Options',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.green,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      const Text('This waste can be composted! Learn how...'),
+                      const SizedBox(height: 8),
+                      ElevatedButton.icon(
+                        onPressed: () => _showCompostingDialog(report),
+                        icon: const Icon(Icons.info_outline),
+                        label: const Text('View Composting Guide'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              // Nearest Recycling for non-organic waste
+              if (report.type == 'dumping' && !CompostingService.isCompostable(report.aiClassification ?? report.type))
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withValues(alpha: 0.1),
+                    border: Border.all(color: Colors.blue),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(Icons.recycling, color: Colors.blue),
+                          SizedBox(width: 8),
+                          Text(
+                            'Nearest Recycling',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blue,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      FutureBuilder<Map<String, dynamic>>(
+                        future: RecyclingRouteService.findNearestFacility(
+                          lat: report.lat,
+                          lng: report.lng,
+                          wasteType: report.aiClassification ?? report.type,
+                        ),
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState == ConnectionState.waiting) {
+                            return const CircularProgressIndicator();
+                          }
+                          final result = snapshot.data;
+                          if (result == null || result['found'] != true) {
+                            return Text(
+                              result?['message'] as String? ?? 'No recycling facilities found nearby',
+                              style: const TextStyle(fontSize: 12),
+                            );
+                          }
+                          final facility = result['facility'] as Map<String, dynamic>?;
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Facility: ${facility?['name'] ?? 'Unknown'}'),
+                              Text('Distance: ${(facility?['distance'] as double?).toStringAsFixed(2)} km'),
+                              Text('${result['totalNearby']} facilities within 5km'),
+                              const SizedBox(height: 8),
+                              ElevatedButton.icon(
+                                onPressed: () async {
+                                  final url = result['directionsUrl'] as String?;
+                                  if (url != null && await canLaunchUrl(Uri.parse(url))) {
+                                    await launchUrl(Uri.parse(url));
+                                  }
+                                },
+                                icon: const Icon(Icons.directions),
+                                label: const Text('Get Directions'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.blue,
+                                ),
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
             ],
           ),
         ),
@@ -836,6 +950,90 @@ class _ExploreScreenState extends State<ExploreScreen> {
 
     _speciesCache[report.id] = speciesData;
     return speciesData;
+  }
+
+  void _showCompostingDialog(Report report) {
+    final location = '${report.lat.toStringAsFixed(2)}, ${report.lng.toStringAsFixed(2)}';
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.compost, color: Colors.green),
+            SizedBox(width: 8),
+            Text('Composting Guide'),
+          ],
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Quick Tips:', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                ...CompostingService.quickTips.map((tip) {
+                  final icon = _getCompostIcon(tip['icon'] as String);
+                  return Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(8),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(icon, size: 20, color: tip['icon'] == 'warning' ? Colors.red : Colors.green),
+                              const SizedBox(width: 8),
+                              Text(tip['title'] as String, style: const TextStyle(fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text('Items: ${(tip['items'] as List).join(', ')}'),
+                          Text('Time: ${tip['time']}'),
+                        ],
+                      ),
+                    ),
+                  );
+                }),
+                const SizedBox(height: 16),
+                const Text('AI Personalized Guide:', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                FutureBuilder<String>(
+                  future: CompostingService.getPersonalizedGuide(
+                    wasteType: report.aiClassification ?? report.type,
+                    location: location,
+                  ),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const CircularProgressIndicator();
+                    }
+                    return Text(snapshot.data ?? 'Unable to load guide');
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  IconData _getCompostIcon(String icon) {
+    switch (icon) {
+      case 'kitchen': return Icons.restaurant;
+      case 'yard': return Icons.park;
+      case 'paper': return Icons.description;
+      case 'warning': return Icons.warning;
+      default: return Icons.eco;
+    }
   }
 
   @override
