@@ -25,12 +25,14 @@ import 'package:earthos/core/services/sensitive_zone_service.dart';
 import 'package:earthos/core/services/risk_engine.dart';
 import 'package:earthos/core/services/recommendation_engine.dart';
 import 'package:earthos/core/services/trend_service.dart';
+import 'package:earthos/core/services/fake_report_detection_service.dart';
 import 'package:earthos/features/report/services/report_service.dart';
 import 'package:earthos/features/axis/services/axis_service.dart';
 import 'package:earthos/features/axis/services/product_service.dart';
 import 'package:earthos/features/axis/services/system_context_service.dart';
 import 'package:earthos/features/axis/widgets/axis_avatar.dart';
 import 'package:earthos/features/axis/widgets/mlkit_barcode_scanner.dart';
+import 'package:earthos/features/emergency/emergency_service.dart';
 
 class AxisScreen extends StatefulWidget {
   const AxisScreen({super.key});
@@ -47,6 +49,7 @@ class _AxisScreenState extends State<AxisScreen> {
   final ProductService _productService = ProductService();
   final SystemContextService _systemContextService = SystemContextService();
   final TrendService _trendService = TrendService();
+  final EmergencyService _emergencyService = EmergencyService();
   final ImagePicker _imagePicker = ImagePicker();
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
@@ -361,6 +364,50 @@ $explanation
         severity: adjustedSeverity,
       );
 
+      // Run fake detection
+      final fakeDetection = await FakeReportDetectionService.analyzePhoto(image);
+      final isFlagged = fakeDetection['flagged'] as bool? ?? false;
+      final fakeScore = fakeDetection['fakeScore'] as double? ?? 0.0;
+      final fakeReason = fakeDetection['reason'] as String? ?? '';
+
+      // If flagged, show confirmation dialog
+      bool shouldProceed = true;
+      if (isFlagged) {
+        shouldProceed = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.warning_amber, color: Colors.orange),
+                SizedBox(width: 8),
+                Text('Image Quality Check'),
+              ],
+            ),
+            content: Text(
+              'This image may not be a genuine waste photo.\n\nReason: $fakeReason\n\nReport anyway?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.orange,
+                ),
+                child: const Text('Report Anyway'),
+              ),
+            ],
+          ),
+        ) ?? false;
+      }
+
+      if (!shouldProceed) {
+        setState(() => _isLoading = false);
+        return;
+      }
+
       final user = await _userIdentityService.getOrCreateUser();
       await _reportService.createReport(
         type: wasteType ?? 'unknown',
@@ -373,6 +420,8 @@ $explanation
         severity: adjustedSeverity,
         carbonEstimate: carbonImpact,
         isSensitive: isSensitive,
+        fakeScore: fakeScore,
+        flagged: isFlagged ? true : null,
       );
 
       final resultMessage = '''
@@ -456,6 +505,162 @@ Report submitted successfully.
       _saveChatHistory();
       _scrollToBottom();
       await _speakResponse(errText);
+    }
+  }
+
+  void _showEmergencyDialog() {
+    String? selectedEmergencyType;
+    final descriptionController = TextEditingController();
+    File? emergencyPhoto;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.warning, color: Colors.red),
+              SizedBox(width: 8),
+              Text('Report Emergency'),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Emergency Type',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<String>(
+                  value: selectedEmergencyType,
+                  hint: const Text('Select emergency type'),
+                  items: EmergencyService.emergencyTypes
+                      .map((type) => DropdownMenuItem(
+                            value: type,
+                            child: Text(type),
+                          ))
+                      .toList(),
+                  onChanged: (value) {
+                    setDialogState(() => selectedEmergencyType = value);
+                  },
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Description',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: descriptionController,
+                  maxLines: 3,
+                  decoration: const InputDecoration(
+                    hintText: 'Describe the emergency...',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                ElevatedButton.icon(
+                  onPressed: () async {
+                    final photo = await _imagePicker.pickImage(
+                      source: ImageSource.camera,
+                    );
+                    if (photo != null) {
+                      setDialogState(() => emergencyPhoto = File(photo.path));
+                    }
+                  },
+                  icon: const Icon(Icons.camera_alt),
+                  label: const Text('Attach Photo (Optional)'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red.withValues(alpha: 0.1),
+                    foregroundColor: Colors.red,
+                  ),
+                ),
+                if (emergencyPhoto != null) ...[
+                  const SizedBox(height: 8),
+                  const Text('Photo attached', style: TextStyle(color: Colors.green)),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: selectedEmergencyType == null
+                  ? null
+                  : () async {
+                      Navigator.pop(context);
+                      await _submitEmergencyReport(
+                        selectedEmergencyType!,
+                        descriptionController.text,
+                        emergencyPhoto,
+                      );
+                    },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('REPORT EMERGENCY'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _submitEmergencyReport(
+    String emergencyType,
+    String description,
+    File? photo,
+  ) async {
+    setState(() => _isLoading = true);
+
+    try {
+      final user = await _userIdentityService.getOrCreateUser();
+      final position = await Geolocator.getCurrentPosition();
+
+      String? photoUrl;
+      if (photo != null) {
+        photoUrl = await _reportService.uploadPhoto(photo);
+      }
+
+      final reportId = await _emergencyService.createEmergencyReport(
+        userId: user.id,
+        userName: user.name,
+        emergencyType: emergencyType,
+        description: description,
+        lat: position.latitude,
+        lng: position.longitude,
+        photoUrl: photoUrl,
+      );
+
+      setState(() {
+        _messages.add(ChatMessage(
+          text: 'Emergency reported successfully. Nearby users have been alerted.',
+          isUser: false,
+        ));
+        _isLoading = false;
+      });
+
+      _saveChatHistory();
+      _scrollToBottom();
+      await _speakResponse('Emergency reported successfully. Nearby users have been alerted.');
+    } catch (e) {
+      setState(() {
+        _messages.add(ChatMessage(
+          text: 'Error reporting emergency: $e',
+          isUser: false,
+        ));
+        _isLoading = false;
+      });
+      _saveChatHistory();
+      _scrollToBottom();
+      await _speakResponse('Error reporting emergency');
     }
   }
 
@@ -661,6 +866,15 @@ Report submitted successfully.
                   color: AppColors.primary,
                   style: IconButton.styleFrom(
                     backgroundColor: AppColors.primary.withValues(alpha: 0.1),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  onPressed: _isLoading ? null : _showEmergencyDialog,
+                  icon: const Icon(Icons.warning),
+                  color: Colors.red,
+                  style: IconButton.styleFrom(
+                    backgroundColor: Colors.red.withValues(alpha: 0.1),
                   ),
                 ),
                 const SizedBox(width: 8),

@@ -2,6 +2,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:earthos/features/report/models/report_model.dart';
 import 'package:earthos/core/services/carbon_engine.dart';
 import 'package:earthos/features/streak/streak_service.dart';
+import 'package:earthos/core/services/fake_report_detection_service.dart';
 
 class ReportService {
   final SupabaseClient _supabase = Supabase.instance.client;
@@ -21,6 +22,8 @@ class ReportService {
     String? title,
     String? description,
     String? eventDate,
+    double? fakeScore,
+    bool? flagged,
   }) async {
     final double computedCarbon = carbonEstimate ??
         CarbonEngine.calculateImpact(
@@ -28,7 +31,12 @@ class ReportService {
           severity: severity ?? 1,
         );
 
-    print('Report created: type=$type severity=$severity carbon=$computedCarbon');
+    String finalTitle = title ?? '';
+    if (flagged == true && finalTitle.isNotEmpty) {
+      finalTitle = '[FLAGGED] $finalTitle';
+    }
+
+    print('Report created: type=$type severity=$severity carbon=$computedCarbon fakeScore=$fakeScore flagged=$flagged');
 
     await _supabase.from(_tableName).insert({
       'type': type,
@@ -41,10 +49,12 @@ class ReportService {
       if (aiClassification != null) 'ai_classification': aiClassification,
       if (severity != null) 'severity': severity,
       if (isSensitive != null) 'is_sensitive': isSensitive,
-      if (title != null) 'title': title,
+      if (finalTitle.isNotEmpty) 'title': finalTitle,
       if (description != null) 'description': description,
       if (eventDate != null) 'event_date': eventDate,
       if (type == 'cleanup_event') 'participants_count': 0,
+      if (fakeScore != null) 'fake_score': fakeScore,
+      if (flagged != null) 'flagged': flagged,
     });
 
     StreakService.updateStreak();

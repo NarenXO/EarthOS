@@ -8,6 +8,10 @@ class Report {
   final int? severity;
   final double? carbonEstimate;
   final bool? isSensitive;
+  final bool? isEmergency;
+  final String? emergencyType;
+  final double? fakeScore;
+  final bool? flagged;
   final double lat;
   final double lng;
   final String createdBy;
@@ -33,6 +37,10 @@ class Report {
     this.severity,
     this.carbonEstimate,
     this.isSensitive,
+    this.isEmergency,
+    this.emergencyType,
+    this.fakeScore,
+    this.flagged,
     required this.lat,
     required this.lng,
     required this.createdBy,
@@ -60,6 +68,10 @@ class Report {
       severity: json['severity'] as int?,
       carbonEstimate: json['carbon_estimate'] as double?,
       isSensitive: json['is_sensitive'] as bool?,
+      isEmergency: json['is_emergency'] as bool?,
+      emergencyType: json['emergency_type'] as String?,
+      fakeScore: json['fake_score'] as double?,
+      flagged: json['flagged'] as bool?,
       lat: json['lat'] as double,
       lng: json['lng'] as double,
       createdBy: json['created_by'] as String,
@@ -92,6 +104,10 @@ class Report {
       'severity': severity,
       'carbon_estimate': carbonEstimate,
       'is_sensitive': isSensitive,
+      'is_emergency': isEmergency,
+      'emergency_type': emergencyType,
+      'fake_score': fakeScore,
+      'flagged': flagged,
       'lat': lat,
       'lng': lng,
       'created_by': createdBy,

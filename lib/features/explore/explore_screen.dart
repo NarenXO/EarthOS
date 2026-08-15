@@ -21,10 +21,12 @@ import 'package:earthos/core/services/cleanup_verification_service.dart';
 import 'package:earthos/core/services/health_impact_service.dart';
 import 'package:earthos/core/services/water_body_service.dart';
 import 'package:earthos/core/services/species_impact_service.dart';
+import 'package:earthos/core/services/wildlife_alert_service.dart';
 import 'package:earthos/features/report/services/report_service.dart';
 import 'package:earthos/features/report/models/report_model.dart';
 import 'package:earthos/features/achievements/achievement_service.dart';
 import 'package:earthos/features/achievements/achievement_popup.dart';
+import 'package:earthos/features/emergency/emergency_service.dart';
 
 class ExploreScreen extends StatefulWidget {
   const ExploreScreen({super.key});
@@ -40,12 +42,16 @@ class _ExploreScreenState extends State<ExploreScreen> {
 
   final ReportService _reportService = ReportService();
   final ForestService _forestService = ForestService();
+  final EmergencyService _emergencyService = EmergencyService();
   final Set<Marker> _markers = {};
   final Set<Circle> _circles = {};
   StreamSubscription<List<Report>>? _reportsSubscription;
   final Map<String, String> _healthImpactCache = {};
   final Map<String, Map<String, dynamic>> _waterBodyCache = {};
   final Map<String, Map<String, dynamic>> _speciesCache = {};
+  final Map<String, Map<String, dynamic>> _wildlifeRiskCache = {};
+  List<Map<String, dynamic>> _activeEmergencies = [];
+  bool _showEmergencyBanner = false;
 
   static const CameraPosition _initialCameraPosition = CameraPosition(
     target: LatLng(28.6139, 77.2090),
@@ -90,6 +96,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
     _initializeLocation();
     _subscribeToReports();
     _fetchForestAlerts();
+    _fetchActiveEmergencies();
   }
 
   @override
@@ -161,37 +168,49 @@ class _ExploreScreenState extends State<ExploreScreen> {
     if (_currentLatLng == null) return;
 
     try {
-      final alerts = await _forestService.fetchForestAlerts(
-        lat: _currentLatLng!.latitude,
-        lng: _currentLatLng!.longitude,
+      final alerts = await _forestService.getNearbyForest(
+        _currentLatLng!.latitude,
+        _currentLatLng!.longitude,
       );
 
-      final alertCount = alerts['alertCount'] as int? ?? 0;
-      
-      if (alertCount > 0 && _currentLatLng != null) {
-        // Add a forest alert marker near user location
-        // Since we don't have exact geometry, we place a marker slightly offset
+      if (alerts.isNotEmpty && mounted) {
         setState(() {
-          _markers.add(
-            Marker(
-              markerId: const MarkerId('forest_alert_cluster'),
-              position: LatLng(
-                _currentLatLng!.latitude + 0.01,
-                _currentLatLng!.longitude + 0.01,
-              ),
-              icon: BitmapDescriptor.defaultMarkerWithHue(
-                BitmapDescriptor.hueGreen,
-              ),
-              infoWindow: InfoWindow(
-                title: 'Forest Alerts',
-                snippet: '$alertCount alerts detected in this area',
-              ),
-            ),
-          );
+          _showSensitiveOverlay = true;
         });
       }
     } catch (e) {
-      // Silently fail
+      print('Forest alerts error: $e');
+    }
+  }
+
+  Future<void> _fetchActiveEmergencies() async {
+    try {
+      final emergencies = await _emergencyService.fetchActiveEmergencies();
+      
+      // Filter emergencies within 5km
+      final nearbyEmergencies = <Map<String, dynamic>>[];
+      if (_currentLatLng != null) {
+        for (var emergency in emergencies) {
+          final lat = emergency['lat'] as double? ?? 0.0;
+          final lng = emergency['lng'] as double? ?? 0.0;
+          final distance = Geolocator.distanceBetween(
+            _currentLatLng!.latitude,
+            _currentLatLng!.longitude,
+            lat,
+            lng,
+          );
+          if (distance <= 5000) {
+            nearbyEmergencies.add(emergency);
+          }
+        }
+      }
+
+      setState(() {
+        _activeEmergencies = nearbyEmergencies;
+        _showEmergencyBanner = nearbyEmergencies.isNotEmpty;
+      });
+    } catch (e) {
+      print('Fetch emergencies error: $e');
     }
   }
 
@@ -221,7 +240,9 @@ class _ExploreScreenState extends State<ExploreScreen> {
           double hue;
           bool isHighRisk = false;
           
-          if (report.type == 'cleanup_event') {
+          if (report.isEmergency == true) {
+            hue = BitmapDescriptor.hueRed;
+          } else if (report.type == 'cleanup_event') {
             hue = BitmapDescriptor.hueGreen;
           } else if (report.type == 'dumping') {
             hue = BitmapDescriptor.hueRed;
@@ -364,17 +385,50 @@ class _ExploreScreenState extends State<ExploreScreen> {
   }
 
   void _showReportDetails(Report report) {
+    final isEmergency = report.isEmergency == true;
+    final isFlagged = report.flagged == true;
+    
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(report.type == 'cleanup_event' 
-            ? (report.title ?? 'Cleanup Event') 
-            : report.type.toUpperCase()),
+        title: Row(
+          children: [
+            if (isEmergency) 
+              const Icon(Icons.warning, color: Colors.red)
+            else if (isFlagged)
+              const Icon(Icons.warning_amber, color: Colors.orange),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                isEmergency 
+                    ? '🚨 EMERGENCY: ${report.emergencyType ?? report.title ?? 'Unknown'}'
+                    : (report.type == 'cleanup_event' 
+                        ? (report.title ?? 'Cleanup Event') 
+                        : report.type.toUpperCase()),
+              ),
+            ),
+          ],
+        ),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (isFlagged) ...[
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  margin: const EdgeInsets.only(bottom: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withValues(alpha: 0.1),
+                    border: Border.all(color: Colors.orange),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Text(
+                    '⚠️ This report was flagged as potentially not genuine',
+                    style: TextStyle(color: Colors.orange),
+                  ),
+                ),
+              ],
               if (report.description != null) ...[
                 Text(report.description!),
                 const SizedBox(height: 8),
@@ -606,6 +660,94 @@ class _ExploreScreenState extends State<ExploreScreen> {
                             ),
                           );
                         }),
+                        const SizedBox(height: 16),
+                        const Text(
+                          'Wildlife Risk Assessment',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        FutureBuilder(
+                          future: WildlifeAlertService.assessWildlifeRisk(
+                            lat: report.lat,
+                            lng: report.lng,
+                            wasteType: report.aiClassification ?? report.type,
+                            severity: report.severity ?? 1,
+                          ),
+                          builder: (context, snapshot) {
+                            if (snapshot.connectionState == ConnectionState.waiting) {
+                              return const CircularProgressIndicator();
+                            }
+                            final riskData = snapshot.data;
+                            if (riskData == null) {
+                              return const Text('Unable to assess risk');
+                            }
+                            final riskScore = riskData['riskScore'] as int? ?? 0;
+                            final level = riskData['level'] as String? ?? 'UNKNOWN';
+                            final action = riskData['action'] as String? ?? '';
+                            final aiAdvice = riskData['aiAdvice'] as String?;
+
+                            Color levelColor;
+                            if (level == 'CRITICAL') {
+                              levelColor = Colors.red;
+                            } else if (level == 'HIGH') {
+                              levelColor = Colors.orange;
+                            } else if (level == 'MODERATE') {
+                              levelColor = Colors.yellow;
+                            } else {
+                              levelColor = Colors.green;
+                            }
+
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: levelColor.withValues(alpha: 0.1),
+                                    border: Border.all(color: levelColor),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Text(
+                                        'Risk Level: $level',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: levelColor,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        '($riskScore/100)',
+                                        style: const TextStyle(fontSize: 12),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text('Recommended: $action'),
+                                if (aiAdvice != null) ...[
+                                  const SizedBox(height: 8),
+                                  Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: Colors.blue.withValues(alpha: 0.1),
+                                      border: Border.all(color: Colors.blue),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Text(
+                                      'AI Advice: $aiAdvice',
+                                      style: const TextStyle(fontSize: 12),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            );
+                          },
+                        ),
                       ],
                     ],
                   );
@@ -702,6 +844,47 @@ class _ExploreScreenState extends State<ExploreScreen> {
       backgroundColor: AppColors.background,
       body: Stack(
         children: [
+          // Emergency Banner
+          if (_showEmergencyBanner)
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: const BoxDecoration(
+                  color: Colors.red,
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.warning, color: Colors.white),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '⚠️ ${_activeEmergencies.length} active emergency/emergencies nearby. Tap to view.',
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () {
+                        if (_activeEmergencies.isNotEmpty && _currentLatLng != null) {
+                          final nearest = _activeEmergencies[0];
+                          final lat = nearest['lat'] as double? ?? 0.0;
+                          final lng = nearest['lng'] as double? ?? 0.0;
+                          _mapController?.animateCamera(
+                            CameraUpdate.newLatLngZoom(
+                              LatLng(lat, lng),
+                              16,
+                            ),
+                          );
+                        }
+                      },
+                      icon: const Icon(Icons.center_focus_strong, color: Colors.white),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           GoogleMap(
             initialCameraPosition: _initialCameraPosition,
             markers: _markers,
