@@ -10,6 +10,7 @@
 */
 
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:earthos/core/constants/app_colors.dart';
 import 'package:earthos/core/config/app_config.dart';
 import 'package:earthos/core/services/user_identity_service.dart';
@@ -17,6 +18,9 @@ import 'package:earthos/features/report/services/report_service.dart';
 import 'package:earthos/features/profile/models/certificate_model.dart';
 import 'package:earthos/features/profile/widgets/environmental_certificate_card.dart';
 import 'package:earthos/features/achievements/achievement_service.dart';
+import 'package:earthos/features/achievements/achievement_popup.dart';
+import 'package:earthos/features/level/level_service.dart';
+import 'package:earthos/features/streak/streak_service.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -30,6 +34,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final ReportService _reportService = ReportService();
   
   Map<String, dynamic>? _userImpact;
+  Map<String, dynamic>? _levelData;
+  Map<String, int>? _streakData;
   bool _isLoading = true;
   String _userName = AppConfig.author;
 
@@ -45,14 +51,43 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final impact = await _reportService.fetchUserImpact(user.id);
       print('Profile impact: reports=${impact['totalReports']}, verified=${impact['verifiedReports']}, carbon=${impact['totalCarbonImpact']}');
 
+      final levelData = LevelService.calculateLevel(
+        totalReports: impact['totalReports'] as int,
+        verifiedCleanups: impact['verifiedReports'] as int,
+        totalCarbon: (impact['totalCarbonImpact'] as num).toDouble(),
+      );
+
+      final streakData = await StreakService.getStreak();
+
       final achievements = AchievementService.calculateAchievements(impact);
       print('Achievements: unlocked=${achievements.where((a) => a.unlocked).length}/${achievements.length}');
       for (var a in achievements) {
         print('  ${a.title}: unlocked=${a.unlocked}, current=${a.currentValue}, required=${a.requiredValue}');
       }
 
+      // Check for new achievements and show popups
+      final prefs = await SharedPreferences.getInstance();
+      final unlockedIds = prefs.getStringList('unlocked_achievements') ?? [];
+      
+      for (final achievement in achievements) {
+        if (achievement.unlocked && !unlockedIds.contains(achievement.id)) {
+          if (mounted) {
+            AchievementPopup.show(
+              context,
+              title: achievement.title,
+              icon: achievement.icon,
+            );
+          }
+          unlockedIds.add(achievement.id);
+        }
+      }
+      
+      await prefs.setStringList('unlocked_achievements', unlockedIds);
+
       setState(() {
         _userImpact = impact;
+        _levelData = levelData;
+        _streakData = streakData;
         _userName = user.name.isNotEmpty ? user.name : AppConfig.author;
         _isLoading = false;
       });
@@ -78,7 +113,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
           children: [
 
             // ===============================
-            // USER HEADER
+            // STREAK CARD
+            // ===============================
+            _buildStreakCard(),
+
+            const SizedBox(height: 20),
+
+            // ===============================
+            // USER HEADER WITH LEVEL
             // ===============================
             _buildUserHeader(context),
 
@@ -128,9 +170,66 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   // =========================================================
+  // STREAK CARD
+  // =========================================================
+  Widget _buildStreakCard() {
+    final currentStreak = _streakData?['current'] ?? 0;
+    final longestStreak = _streakData?['longest'] ?? 0;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: _cardDecoration(),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Text(
+            '🔥',
+            style: TextStyle(fontSize: 32),
+          ),
+          const SizedBox(width: 12),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Text(
+                    '$currentStreak',
+                    style: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF00C896),
+                    ),
+                  ),
+                  const Text(
+                    ' day streak',
+                    style: TextStyle(fontSize: 16),
+                  ),
+                ],
+              ),
+              Text(
+                'Longest: $longestStreak days',
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // =========================================================
   // USER HEADER
   // =========================================================
   Widget _buildUserHeader(BuildContext context) {
+    final level = _levelData?['level'] ?? 1;
+    final title = _levelData?['title'] ?? 'Eco Novice';
+    final progress = _levelData?['progress'] ?? 0.0;
+    final progressXp = _levelData?['progressXp'] ?? 0;
+    final xpForNext = _levelData?['xpForNext'] ?? 100;
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: _cardDecoration(),
@@ -139,15 +238,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
         children: [
           Row(
             children: [
-              CircleAvatar(
-                radius: 28,
-                backgroundColor: AppColors.primary.withValues(alpha: 0.2),
-                child: Text(
-                  _userName.isNotEmpty ? _userName[0].toUpperCase() : 'U',
-                  style: const TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.primary,
+              Container(
+                width: 70,
+                height: 70,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF00C896), Color(0xFF00A57C)],
+                  ),
+                  shape: BoxShape.circle,
+                ),
+                child: Center(
+                  child: Text(
+                    '$level',
+                    style: const TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
                   ),
                 ),
               ),
@@ -160,9 +267,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     style: Theme.of(context).textTheme.headlineMedium,
                   ),
                   const SizedBox(height: 4),
-                  const Text(
-                    "Level 4 • Environmental Guardian",
-                    style: TextStyle(color: AppColors.textSecondary),
+                  Text(
+                    title,
+                    style: const TextStyle(color: AppColors.textSecondary),
                   ),
                 ],
               ),
@@ -172,16 +279,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ClipRRect(
             borderRadius: BorderRadius.circular(12),
             child: LinearProgressIndicator(
-              value: 0.65,
+              value: progress,
               minHeight: 10,
               backgroundColor: AppColors.border,
-              color: AppColors.primary,
+              color: const Color(0xFF00C896),
             ),
           ),
           const SizedBox(height: 8),
-          const Text(
-            "650 / 1000 XP to next level",
-            style: TextStyle(color: AppColors.textSecondary),
+          Text(
+            "$progressXp / $xpForNext XP to next level",
+            style: const TextStyle(color: AppColors.textSecondary),
           ),
         ],
       ),

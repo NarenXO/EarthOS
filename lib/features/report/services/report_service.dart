@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:earthos/features/report/models/report_model.dart';
 import 'package:earthos/core/services/carbon_engine.dart';
+import 'package:earthos/features/streak/streak_service.dart';
 
 class ReportService {
   final SupabaseClient _supabase = Supabase.instance.client;
@@ -45,6 +46,8 @@ class ReportService {
       if (eventDate != null) 'event_date': eventDate,
       if (type == 'cleanup_event') 'participants_count': 0,
     });
+
+    StreakService.updateStreak();
   }
 
   Future<List<Report>> fetchReports() async {

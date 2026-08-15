@@ -10,6 +10,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'core/config/app_config.dart';
 import 'core/config/supabase_config.dart';
 import 'core/theme/app_theme.dart';
+import 'features/streak/streak_service.dart';
 import 'shared/widgets/app_scaffold.dart';
 import 'shared/widgets/animated_background.dart';
 
@@ -20,6 +21,8 @@ void main() async {
     url: SupabaseConfig.supabaseUrl,
     anonKey: SupabaseConfig.supabaseAnonKey,
   );
+  
+  StreakService.updateStreak();
   
   runApp(const EarthOSApp());
 }

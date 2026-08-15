@@ -13,12 +13,16 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:earthos/core/constants/app_colors.dart';
 import 'package:earthos/core/services/forest_service.dart';
 import 'package:earthos/core/services/cleanup_verification_service.dart';
+import 'package:earthos/core/services/health_impact_service.dart';
 import 'package:earthos/features/report/services/report_service.dart';
 import 'package:earthos/features/report/models/report_model.dart';
+import 'package:earthos/features/achievements/achievement_service.dart';
+import 'package:earthos/features/achievements/achievement_popup.dart';
 
 class ExploreScreen extends StatefulWidget {
   const ExploreScreen({super.key});
@@ -37,6 +41,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
   final Set<Marker> _markers = {};
   final Set<Circle> _circles = {};
   StreamSubscription<List<Report>>? _reportsSubscription;
+  final Map<String, String> _healthImpactCache = {};
 
   static const CameraPosition _initialCameraPosition = CameraPosition(
     target: LatLng(28.6139, 77.2090),
@@ -46,6 +51,34 @@ class _ExploreScreenState extends State<ExploreScreen> {
   );
 
   bool _showSensitiveOverlay = false;
+  bool _showHeatmap = false;
+
+  Future<void> _checkAndShowAchievements() async {
+    try {
+      final userImpact = await _reportService.fetchImpactStats();
+      final achievements = AchievementService.calculateAchievements(userImpact);
+      
+      final prefs = await SharedPreferences.getInstance();
+      final unlockedIds = prefs.getStringList('unlocked_achievements') ?? [];
+      
+      for (final achievement in achievements) {
+        if (achievement.unlocked && !unlockedIds.contains(achievement.id)) {
+          if (mounted) {
+            AchievementPopup.show(
+              context,
+              title: achievement.title,
+              icon: achievement.icon,
+            );
+          }
+          unlockedIds.add(achievement.id);
+        }
+      }
+      
+      await prefs.setStringList('unlocked_achievements', unlockedIds);
+    } catch (e) {
+      print('Error checking achievements: $e');
+    }
+  }
 
   @override
   void initState() {
@@ -164,7 +197,22 @@ class _ExploreScreenState extends State<ExploreScreen> {
         // Clear markers except forest alert
         _markers.removeWhere((marker) => marker.markerId.value != 'forest_alert_cluster');
         _circles.clear();
+        
         for (final report in reports) {
+          // Add heatmap circles if enabled
+          if (_showHeatmap) {
+            _circles.add(Circle(
+              circleId: CircleId(report.id),
+              center: LatLng(report.lat, report.lng),
+              radius: 150,
+              fillColor: report.type == 'dumping'
+                  ? Colors.red.withOpacity(0.25)
+                  : Colors.green.withOpacity(0.25),
+              strokeColor: Colors.transparent,
+              strokeWidth: 0,
+            ));
+          }
+          
           // Determine marker color based on type and properties
           double hue;
           bool isHighRisk = false;
@@ -182,10 +230,11 @@ class _ExploreScreenState extends State<ExploreScreen> {
             hue = BitmapDescriptor.hueAzure;
           }
 
-          // Add marker
-          _markers.add(
-            Marker(
-              markerId: MarkerId(report.id),
+          // Add marker (only if heatmap is not shown)
+          if (!_showHeatmap) {
+            _markers.add(
+              Marker(
+                markerId: MarkerId(report.id),
               position: LatLng(report.lat, report.lng),
               icon: BitmapDescriptor.defaultMarkerWithHue(hue),
               onTap: () => _showReportDetails(report),
@@ -267,6 +316,8 @@ class _ExploreScreenState extends State<ExploreScreen> {
           photoAfter: afterFile.path,
         );
 
+        await _checkAndShowAchievements();
+
         if (mounted) {
           showDialog(
             context: context,
@@ -315,34 +366,77 @@ class _ExploreScreenState extends State<ExploreScreen> {
         title: Text(report.type == 'cleanup_event' 
             ? (report.title ?? 'Cleanup Event') 
             : report.type.toUpperCase()),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (report.description != null) ...[
-              Text(report.description!),
-              const SizedBox(height: 8),
-            ],
-            if (report.severity != null) ...[
-              Text('Severity: ${report.severity}/5'),
-              const SizedBox(height: 8),
-            ],
-            if (report.carbonEstimate != null) ...[
-              Text('Carbon Impact: ${report.carbonEstimate!.toStringAsFixed(1)} kg CO₂e'),
-              const SizedBox(height: 8),
-            ],
-            if (report.type == 'cleanup_event') ...[
-              if (report.eventDate != null) ...[
-                Text('Date: ${report.eventDate}'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (report.description != null) ...[
+                Text(report.description!),
                 const SizedBox(height: 8),
               ],
-              Text('Participants: ${report.participantsCount ?? 0}'),
+              if (report.severity != null) ...[
+                Text('Severity: ${report.severity}/5'),
+                const SizedBox(height: 8),
+              ],
+              if (report.carbonEstimate != null) ...[
+                Text('Carbon Impact: ${report.carbonEstimate!.toStringAsFixed(1)} kg CO₂e'),
+                const SizedBox(height: 8),
+              ],
+              if (report.type == 'cleanup_event') ...[
+                if (report.eventDate != null) ...[
+                  Text('Date: ${report.eventDate}'),
+                  const SizedBox(height: 8),
+                ],
+                Text('Participants: ${report.participantsCount ?? 0}'),
+                const SizedBox(height: 8),
+              ],
+              Text('Status: ${report.status}'),
               const SizedBox(height: 8),
+              Text('Organized by: ${report.createdByName}'),
+              if (report.type == 'dumping') ...[
+                const SizedBox(height: 16),
+                const Text(
+                  'Health Impact',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                FutureBuilder<String>(
+                  future: _getHealthImpact(report),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const CircularProgressIndicator();
+                    }
+                    if (snapshot.hasError) {
+                      return Text('Error: ${snapshot.error}');
+                    }
+                    return Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.red),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.warning, color: Colors.red),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              snapshot.data ?? 'No health impact data available',
+                              style: const TextStyle(fontSize: 14),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ],
             ],
-            Text('Status: ${report.status}'),
-            const SizedBox(height: 8),
-            Text('Organized by: ${report.createdByName}'),
-          ],
+          ),
         ),
         actions: [
           TextButton(
@@ -379,6 +473,25 @@ class _ExploreScreenState extends State<ExploreScreen> {
     );
   }
 
+  Future<String> _getHealthImpact(Report report) async {
+    if (_healthImpactCache.containsKey(report.id)) {
+      return _healthImpactCache[report.id]!;
+    }
+
+    final wasteType = report.aiClassification ?? report.type;
+    final severity = report.severity ?? 1;
+    final daysOld = DateTime.now().difference(report.createdAt).inDays;
+
+    final impact = await HealthImpactService.getHealthImpact(
+      wasteType: wasteType,
+      severity: severity,
+      daysOld: daysOld,
+    );
+
+    _healthImpactCache[report.id] = impact;
+    return impact;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -412,6 +525,22 @@ class _ExploreScreenState extends State<ExploreScreen> {
             zoomControlsEnabled: false,
           ),
           // Return to My Location Button
+          Positioned(
+            right: 16,
+            bottom: 160,
+            child: FloatingActionButton(
+              heroTag: 'heatmap_button',
+              mini: true,
+              backgroundColor: _showHeatmap ? const Color(0xFF00C896) : Colors.white,
+              onPressed: () {
+                setState(() => _showHeatmap = !_showHeatmap);
+              },
+              child: Icon(
+                Icons.blur_on,
+                color: _showHeatmap ? Colors.white : Colors.black,
+              ),
+            ),
+          ),
           Positioned(
             right: 16,
             bottom: 100,
