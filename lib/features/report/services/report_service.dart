@@ -3,6 +3,7 @@ import 'package:earthos/features/report/models/report_model.dart';
 import 'package:earthos/core/services/carbon_engine.dart';
 import 'package:earthos/features/streak/streak_service.dart';
 import 'package:earthos/core/services/fake_report_detection_service.dart';
+import 'dart:io';
 
 class ReportService {
   final SupabaseClient _supabase = Supabase.instance.client;
@@ -282,6 +283,22 @@ class ReportService {
     } catch (e) {
       print('Fetch volunteers error: $e');
       return [];
+    }
+  }
+
+  Future<String> uploadPhoto(File photo) async {
+    try {
+      final fileName = 'reports/${DateTime.now().millisecondsSinceEpoch}.jpg';
+      await _supabase.storage
+          .from('reports')
+          .upload(fileName, photo);
+      final url = _supabase.storage
+          .from('reports')
+          .getPublicUrl(fileName);
+      return url;
+    } catch (e) {
+      print('Upload photo error: $e');
+      return '';
     }
   }
 }

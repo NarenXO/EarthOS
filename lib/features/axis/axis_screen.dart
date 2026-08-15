@@ -367,7 +367,7 @@ $explanation
       );
 
       // Run fake detection
-      final fakeDetection = await FakeReportDetectionService.analyzePhoto(image);
+      final fakeDetection = await FakeReportDetectionService.analyzePhoto(File(image.path));
       final isFlagged = fakeDetection['flagged'] as bool? ?? false;
       final fakeScore = fakeDetection['fakeScore'] as double? ?? 0.0;
       final fakeReason = fakeDetection['reason'] as String? ?? '';
@@ -879,7 +879,7 @@ Report submitted successfully.
           children: [
             if (result['found'] == true) ...[
               Text('Facility: ${result['facility']?['name'] ?? 'Unknown'}'),
-              Text('Distance: ${(result['facility']?['distance'] as double?).toStringAsFixed(2)} km'),
+              Text('Distance: ${((result['facility']?['distance'] as double?) ?? 0.0).toStringAsFixed(2)} km'),
               Text('${result['totalNearby']} facilities within 5km'),
               const SizedBox(height: 16),
               ElevatedButton.icon(

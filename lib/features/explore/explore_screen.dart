@@ -171,9 +171,9 @@ class _ExploreScreenState extends State<ExploreScreen> {
     if (_currentLatLng == null) return;
 
     try {
-      final alerts = await _forestService.getNearbyForest(
-        _currentLatLng!.latitude,
-        _currentLatLng!.longitude,
+      final alerts = await _forestService.fetchForestAlerts(
+        lat: _currentLatLng!.latitude,
+        lng: _currentLatLng!.longitude,
       );
 
       if (alerts.isNotEmpty && mounted) {
@@ -268,6 +268,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
               onTap: () => _showReportDetails(report),
             ),
           );
+          }
 
           // Add risk radius circle for dumping reports
           if (report.type == 'dumping' && report.severity != null) {
@@ -335,7 +336,6 @@ class _ExploreScreenState extends State<ExploreScreen> {
       final isVerified = await verificationService.verifyCleanup(
         beforeFile,
         afterFile,
-        reportId: report.id,
       );
 
       if (isVerified) {
@@ -844,7 +844,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text('Facility: ${facility?['name'] ?? 'Unknown'}'),
-                              Text('Distance: ${(facility?['distance'] as double?).toStringAsFixed(2)} km'),
+                              Text('Distance: ${((facility?['distance'] as double?) ?? 0.0).toStringAsFixed(2)} km'),
                               Text('${result['totalNearby']} facilities within 5km'),
                               const SizedBox(height: 8),
                               ElevatedButton.icon(

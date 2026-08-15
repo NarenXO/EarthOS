@@ -1,4 +1,4 @@
-/*
+﻿/*
 |--------------------------------------------------------------------------
 | EarthOS
 | File: app_config.dart
@@ -40,4 +40,12 @@ class AppConfig {
       String.fromEnvironment('GEMINI_API_KEY');
   static const String geminiEndpoint =
       'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent';
+  static const String openWeatherKey = String.fromEnvironment(
+    'OPENWEATHER_KEY',
+    defaultValue: 'a30e97b0c1d362a9e257fdcc2e363883',
+  );
+  static const String waqiToken = String.fromEnvironment(
+    'WAQI_TOKEN',
+    defaultValue: 'c5c973401d8da5472980d0792853b96c190d31a3',
+  );
 }
