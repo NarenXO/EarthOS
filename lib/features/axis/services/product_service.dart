@@ -4,38 +4,27 @@ import 'package:earthos/core/services/gemini_service.dart';
 
 class ProductService {
   Future<Map<String, dynamic>> fetchProductData(String barcode) async {
-    print('Barcode: $barcode');
+    print('ProductService: barcode=$barcode');
     try {
       final url = Uri.parse(
         'https://world.openfoodfacts.org/api/v0/product/$barcode.json',
       );
+      print('ProductService: calling OpenFoodFacts API');
 
       final response = await http.get(url);
-      print('OpenFoodFacts response status: ${response.statusCode}');
-      print('Product data: ${response.body.length > 200 ? response.body.substring(0, 200) : response.body}');
+      print('ProductService: OpenFoodFacts status=${response.statusCode}');
 
       if (response.statusCode != 200) {
-        return {
-          'error': 'Product not found',
-          'product_name': 'Unknown Product',
-          'brands': 'Unknown',
-          'packaging': 'Unknown',
-          'categories': 'Unknown',
-          'gemini_explanation': 'Product not found in database for barcode $barcode.',
-        };
+        print('ProductService: product not found in database, using Gemini fallback');
+        return await _getGeminiFallback(barcode);
       }
 
       final data = jsonDecode(response.body);
+      print('ProductService: parsing OpenFoodFacts response');
 
       if (data['status'] != 1) {
-        return {
-          'error': 'Product not found',
-          'product_name': 'Unknown Product',
-          'brands': 'Unknown',
-          'packaging': 'Unknown',
-          'categories': 'Unknown',
-          'gemini_explanation': 'Product details unavailable for barcode $barcode.',
-        };
+        print('ProductService: product status != 1, using Gemini fallback');
+        return await _getGeminiFallback(barcode);
       }
 
       final product = data['product'] as Map<String, dynamic>?;
@@ -44,13 +33,18 @@ class ProductService {
       final packaging = product?['packaging'] as String? ?? 'Unknown';
       final categories = product?['categories'] as String? ?? 'Unknown';
 
+      print('ProductService: product found - name=$productName packaging=$packaging');
+
       // Pass product data to Gemini for environmental explanation
       String geminiExplanation = '';
       try {
+        print('ProductService: calling Gemini for environmental analysis');
         final prompt =
             'Analyze the environmental impact of product "$productName" (Brand: $brands, Packaging: $packaging, Categories: $categories). Provide a 2-sentence summary of environmental impact and recyclability.';
         geminiExplanation = await GeminiService.generate(prompt);
+        print('ProductService: Gemini analysis complete');
       } catch (e) {
+        print('ProductService: Gemini failed, using fallback: $e');
         geminiExplanation = estimatePackagingImpact(packaging);
       }
 
@@ -62,14 +56,33 @@ class ProductService {
         'gemini_explanation': geminiExplanation,
       };
     } catch (e) {
-      print('Product service exception: $e');
+      print('ProductService: exception: $e');
+      return await _getGeminiFallback(barcode);
+    }
+  }
+
+  Future<Map<String, dynamic>> _getGeminiFallback(String barcode) async {
+    print('ProductService: using Gemini fallback for barcode=$barcode');
+    try {
+      final prompt = 'Analyze the environmental impact of a product with barcode $barcode. Since it\'s not in the database, provide general guidance on checking packaging materials and recyclability. Keep it to 2 sentences.';
+      final geminiExplanation = await GeminiService.generate(prompt);
       return {
-        'error': 'Failed to fetch product data',
+        'error': 'Product not found in database',
         'product_name': 'Unknown Product',
         'brands': 'Unknown',
         'packaging': 'Unknown',
         'categories': 'Unknown',
-        'gemini_explanation': 'Error fetching product data: $e',
+        'gemini_explanation': geminiExplanation,
+      };
+    } catch (e) {
+      print('ProductService: Gemini fallback failed: $e');
+      return {
+        'error': 'Product not found in database',
+        'product_name': 'Unknown Product',
+        'brands': 'Unknown',
+        'packaging': 'Unknown',
+        'categories': 'Unknown',
+        'gemini_explanation': 'Product not found in database. Please check the packaging material for recyclability information.',
       };
     }
   }

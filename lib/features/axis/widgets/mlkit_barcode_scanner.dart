@@ -14,17 +14,29 @@ class _MLKitBarcodeScannerState extends State<MLKitBarcodeScanner> {
   late final BarcodeScanner _barcodeScanner;
   bool _isScanning = true;
   bool _isProcessing = false;
+  String? _detectedBarcode;
 
   @override
   void initState() {
     super.initState();
-    _barcodeScanner = BarcodeScanner();
+    print('BarcodeScanner: initializing camera');
+    _barcodeScanner = BarcodeScanner(formats: [
+      BarcodeFormat.ean13,
+      BarcodeFormat.ean8,
+      BarcodeFormat.upca,
+      BarcodeFormat.upce,
+      BarcodeFormat.code128,
+      BarcodeFormat.code39,
+      BarcodeFormat.qrCode,
+    ]);
     _initializeCamera();
   }
 
   Future<void> _initializeCamera() async {
     try {
       final cameras = await availableCameras();
+      print('BarcodeScanner: available cameras: ${cameras.length}');
+      
       if (cameras.isEmpty) {
         if (mounted) {
           Navigator.pop(context, null);
@@ -47,7 +59,7 @@ class _MLKitBarcodeScannerState extends State<MLKitBarcodeScanner> {
       );
 
       await _cameraController!.initialize();
-      print('Barcode scanner: camera initialized');
+      print('BarcodeScanner: camera initialized, starting stream');
 
       if (mounted) {
         setState(() {});
@@ -69,7 +81,7 @@ class _MLKitBarcodeScannerState extends State<MLKitBarcodeScanner> {
       if (!_isScanning || _isProcessing) return;
 
       _isProcessing = true;
-      print('Barcode scanner: processing frame');
+      print('BarcodeScanner: frame received size=${image.width}x${image.height}');
 
       try {
         final inputImage = InputImage.fromBytes(
@@ -84,9 +96,11 @@ class _MLKitBarcodeScannerState extends State<MLKitBarcodeScanner> {
 
         _processImage(inputImage);
       } catch (e) {
+        print('BarcodeScanner: frame processing error: $e');
         _isProcessing = false;
       }
     });
+    print('BarcodeScanner: camera started, streaming frames');
   }
 
   Future<void> _processImage(InputImage inputImage) async {
@@ -97,8 +111,20 @@ class _MLKitBarcodeScannerState extends State<MLKitBarcodeScanner> {
         _isScanning = false;
         final barcode = barcodes.first;
         final rawValue = barcode.rawValue;
-        print('Barcode scanner: DETECTED: $rawValue');
-        Navigator.pop(context, rawValue);
+        print('BarcodeScanner: DETECTED type=${barcode.type} raw=$rawValue');
+        
+        setState(() {
+          _detectedBarcode = rawValue;
+        });
+        
+        // Brief delay to show the detected barcode before closing
+        await Future.delayed(const Duration(milliseconds: 500));
+        
+        if (mounted) {
+          Navigator.pop(context, rawValue);
+        }
+      } else {
+        print('BarcodeScanner: no barcode in this frame');
       }
     } catch (e) {
       print('Error processing barcode image: $e');
@@ -112,6 +138,7 @@ class _MLKitBarcodeScannerState extends State<MLKitBarcodeScanner> {
     _isScanning = false;
     _cameraController?.dispose();
     _barcodeScanner.close();
+    print('BarcodeScanner: disposed');
     super.dispose();
   }
 
@@ -139,6 +166,24 @@ class _MLKitBarcodeScannerState extends State<MLKitBarcodeScanner> {
                       border: Border.all(color: Colors.white, width: 2),
                       borderRadius: BorderRadius.circular(12),
                     ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        if (_detectedBarcode != null)
+                          Padding(
+                            padding: const EdgeInsets.all(8.0),
+                            child: Text(
+                              _detectedBarcode!,
+                              style: const TextStyle(
+                                color: Colors.green,
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
                 ),
                 Positioned(
@@ -152,9 +197,9 @@ class _MLKitBarcodeScannerState extends State<MLKitBarcodeScanner> {
                         color: Colors.black54,
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: const Text(
-                        'Align barcode within frame',
-                        style: TextStyle(
+                      child: Text(
+                        _detectedBarcode ?? 'Point at product barcode',
+                        style: const TextStyle(
                           color: Colors.white,
                           fontSize: 16,
                         ),
