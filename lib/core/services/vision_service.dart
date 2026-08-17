@@ -6,8 +6,9 @@ import '../config/app_config.dart';
 class VisionService {
   static const List<String> _models = [
     'gemini-flash-latest',
-    'gemini-2.0-flash-exp',
-    'gemini-1.5-flash-latest',
+    'gemini-2.5-flash',
+    'gemini-2.0-flash',
+    'gemini-1.5-flash',
   ];
 
   static Future<Map<String, dynamic>> classifyWaste(File imageFile) async {

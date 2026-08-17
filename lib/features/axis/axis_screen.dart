@@ -164,7 +164,7 @@ class _AxisScreenState extends State<AxisScreen> {
     final barcode = await Navigator.push<String>(
       context,
       MaterialPageRoute(
-        builder: (context) => const MLKitBarcodeScanner(),
+        builder: (context) => const BarcodeScannerScreen(),
       ),
     );
 
