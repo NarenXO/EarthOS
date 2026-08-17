@@ -2,25 +2,37 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import '../config/app_config.dart';
+import 'groq_service.dart';
 
 class VisionService {
-  static const List<String> _models = [
-    'gemini-flash-latest',
-    'gemini-2.5-flash',
-    'gemini-2.0-flash',
-    'gemini-1.5-flash',
-  ];
-
   static Future<Map<String, dynamic>> classifyWaste(File imageFile) async {
-    final bytes = await imageFile.readAsBytes();
-    final b64 = base64Encode(bytes);
-    
-    for (var attempt = 0; attempt < 3; attempt++) {
-      for (var model in _models) {
+    try {
+      final bytes = await imageFile.readAsBytes();
+      final b64 = base64Encode(bytes);
+      
+      final prompt = 'Analyze this image for environmental waste. Return ONLY valid JSON no markdown, no code fences: {"waste_type":"plastic|metal|organic|e-waste|mixed|unknown","severity":1,"description":"brief description"} severity is integer 1-5.';
+      
+      // Try Groq Vision first
+      print('Vision: trying Groq');
+      final groqResult = await GroqService.generateWithImage(prompt, b64);
+      if (groqResult.isNotEmpty) {
+        try {
+          final cleaned = groqResult.replaceAll('```json', '').replaceAll('```', '').trim();
+          final parsed = jsonDecode(cleaned) as Map<String, dynamic>;
+          print('Vision: Groq succeeded');
+          return parsed;
+        } catch (e) {
+          print('Vision: Groq JSON parse failed: $e');
+        }
+      }
+      
+      print('Vision: Groq failed, trying Gemini');
+      
+      // Fallback to Gemini Vision
+      const geminiModels = ['gemini-flash-latest', 'gemini-flash-lite-latest'];
+      for (var model in geminiModels) {
         try {
           final url = 'https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent';
-          print('VisionService: try attempt=$attempt model=$model');
-          
           final response = await http.post(
             Uri.parse(url),
             headers: {
@@ -31,40 +43,24 @@ class VisionService {
               'contents': [{
                 'parts': [
                   {'inlineData': {'mimeType': 'image/jpeg', 'data': b64}},
-                  {'text': 'Analyze waste. Return ONLY JSON no markdown: {"waste_type":"plastic|metal|organic|e-waste|mixed|unknown","severity":1,"description":"brief"} severity 1-5.'}
+                  {'text': prompt}
                 ]
               }],
               'generationConfig': {'temperature': 0.1, 'maxOutputTokens': 256}
             }),
           ).timeout(const Duration(seconds: 45));
 
-          print('VisionService: status=${response.statusCode} model=$model');
-          
           if (response.statusCode == 200) {
             final text = jsonDecode(response.body)['candidates'][0]['content']['parts'][0]['text'] as String;
             return jsonDecode(text.replaceAll('```json', '').replaceAll('```', '').trim()) as Map<String, dynamic>;
           }
-          
-          if (response.statusCode == 503 || response.statusCode == 429) {
-            print('VisionService: overloaded, trying next model');
-            continue;
-          }
-          
-          print('VisionService error: ${response.body}');
-          return {'waste_type': 'unknown', 'severity': 1, 'description': 'Failed'};
-        } catch (e) {
-          print('VisionService exception attempt=$attempt: $e');
-          continue;
-        }
+        } catch (_) { continue; }
       }
       
-      if (attempt < 2) {
-        final delay = Duration(seconds: 2 * (attempt + 1));
-        print('VisionService: waiting ${delay.inSeconds}s before retry');
-        await Future.delayed(delay);
-      }
+      return {'waste_type': 'unknown', 'severity': 1, 'description': 'Analysis failed'};
+    } catch (e) {
+      print('VisionService exception: $e');
+      return {'waste_type': 'unknown', 'severity': 1, 'description': 'Error: $e'};
     }
-    
-    return {'waste_type': 'unknown', 'severity': 1, 'description': 'AI is temporarily unavailable. Please try again.'};
   }
 }
