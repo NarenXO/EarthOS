@@ -65,6 +65,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
 
   bool _showSensitiveOverlay = false;
   bool _showHeatmap = false;
+  bool _mapReady = false;
 
   Future<void> _checkAndShowAchievements() async {
     try {
@@ -96,10 +97,15 @@ class _ExploreScreenState extends State<ExploreScreen> {
   @override
   void initState() {
     super.initState();
-    _initializeLocation();
-    _subscribeToReports();
-    _fetchForestAlerts();
-    _fetchActiveEmergencies();
+    try {
+      _initializeLocation();
+      _subscribeToReports();
+      _fetchForestAlerts();
+      _fetchActiveEmergencies();
+    } catch (e, stackTrace) {
+      print('ExploreScreen init error: $e');
+      print('Stack: $stackTrace');
+    }
   }
 
   @override
@@ -109,26 +115,42 @@ class _ExploreScreenState extends State<ExploreScreen> {
   }
 
   Future<void> _initializeLocation() async {
-    LocationPermission permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-    }
-
-    if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Location permission required")),
-        );
-      }
-      return;
-    }
-
     try {
+      LocationPermission permission = await Geolocator.checkPermission();
+      print('Location permission status: $permission');
+      
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        print('Location permission after request: $permission');
+      }
+
+      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Location permission required. Centering on default location.")),
+          );
+        }
+        // Center on Chennai default location
+        _currentLatLng = const LatLng(13.0827, 80.2707);
+        if (_mapController != null) {
+          await _mapController!.animateCamera(
+            CameraUpdate.newCameraPosition(
+              CameraPosition(
+                target: _currentLatLng!,
+                zoom: 12,
+              ),
+            ),
+          );
+        }
+        return;
+      }
+
       final position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
 
       _currentLatLng = LatLng(position.latitude, position.longitude);
+      print('User location fetched: lat=${position.latitude} lng=${position.longitude}');
 
       setState(() {
         _locationText =
@@ -148,8 +170,21 @@ class _ExploreScreenState extends State<ExploreScreen> {
           ),
         );
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       print('Location fetch error: $e');
+      print('Location fetch stack: $stackTrace');
+      // Center on default location on error
+      _currentLatLng = const LatLng(13.0827, 80.2707);
+      if (_mapController != null) {
+        await _mapController!.animateCamera(
+          CameraUpdate.newCameraPosition(
+            CameraPosition(
+              target: _currentLatLng!,
+              zoom: 12,
+            ),
+          ),
+        );
+      }
     }
   }
 
@@ -218,86 +253,92 @@ class _ExploreScreenState extends State<ExploreScreen> {
   }
 
   void _subscribeToReports() {
-    _reportsSubscription = _reportService.streamReports().listen((reports) {
-      setState(() {
-        // Clear markers except forest alert
-        _markers.removeWhere((marker) => marker.markerId.value != 'forest_alert_cluster');
-        _circles.clear();
-        
-        for (final report in reports) {
-          // Add heatmap circles if enabled
-          if (_showHeatmap) {
-            _circles.add(Circle(
-              circleId: CircleId(report.id),
-              center: LatLng(report.lat, report.lng),
-              radius: 150,
-              fillColor: report.type == 'dumping'
-                  ? Colors.red.withOpacity(0.25)
-                  : Colors.green.withOpacity(0.25),
-              strokeColor: Colors.transparent,
-              strokeWidth: 0,
-            ));
-          }
+    try {
+      _reportsSubscription = _reportService.streamReports().listen((reports) {
+        setState(() {
+          // Clear markers except forest alert
+          _markers.removeWhere((marker) => marker.markerId.value != 'forest_alert_cluster');
+          _circles.clear();
           
-          // Determine marker color based on type and properties
-          double hue;
-          bool isHighRisk = false;
-          
-          if (report.isEmergency == true) {
-            hue = BitmapDescriptor.hueRed;
-          } else if (report.type == 'cleanup_event') {
-            hue = BitmapDescriptor.hueGreen;
-          } else if (report.type == 'dumping') {
-            hue = BitmapDescriptor.hueRed;
-            isHighRisk = (report.severity ?? 0) > 3;
-          } else if (report.isSensitive == true) {
-            hue = BitmapDescriptor.hueViolet;
-          } else if (isHighRisk) {
-            hue = BitmapDescriptor.hueOrange;
-          } else {
-            hue = BitmapDescriptor.hueAzure;
-          }
-
-          // Add marker (only if heatmap is not shown)
-          if (!_showHeatmap) {
-            _markers.add(
-              Marker(
-                markerId: MarkerId(report.id),
-              position: LatLng(report.lat, report.lng),
-              icon: BitmapDescriptor.defaultMarkerWithHue(hue),
-              onTap: () => _showReportDetails(report),
-            ),
-          );
-          }
-
-          // Add risk radius circle for dumping reports
-          if (report.type == 'dumping' && report.severity != null) {
-            final severity = report.severity!;
-            final radius = severity * 50.0; // meters
+          for (final report in reports) {
+            // Add heatmap circles if enabled
+            if (_showHeatmap) {
+              _circles.add(Circle(
+                circleId: CircleId(report.id),
+                center: LatLng(report.lat, report.lng),
+                radius: 150,
+                fillColor: report.type == 'dumping'
+                    ? Colors.red.withOpacity(0.25)
+                    : Colors.green.withOpacity(0.25),
+                strokeColor: Colors.transparent,
+                strokeWidth: 0,
+              ));
+            }
             
-            Color riskColor;
-            if (severity >= 4) {
-              riskColor = Colors.red;
-            } else if (severity >= 3) {
-              riskColor = Colors.orange;
+            // Determine marker color based on type and properties
+            double hue;
+            bool isHighRisk = false;
+            
+            if (report.isEmergency == true) {
+              hue = BitmapDescriptor.hueRed;
+            } else if (report.type == 'cleanup_event') {
+              hue = BitmapDescriptor.hueGreen;
+            } else if (report.type == 'dumping') {
+              hue = BitmapDescriptor.hueRed;
+              isHighRisk = (report.severity ?? 0) > 3;
+            } else if (report.isSensitive == true) {
+              hue = BitmapDescriptor.hueViolet;
+            } else if (isHighRisk) {
+              hue = BitmapDescriptor.hueOrange;
             } else {
-              riskColor = Colors.yellow;
+              hue = BitmapDescriptor.hueAzure;
             }
 
-            _circles.add(
-              Circle(
-                circleId: CircleId('risk_${report.id}'),
-                center: LatLng(report.lat, report.lng),
-                radius: radius,
-                fillColor: riskColor.withOpacity(0.2),
-                strokeColor: riskColor.withOpacity(0.5),
-                strokeWidth: 2,
+            // Add marker (only if heatmap is not shown)
+            if (!_showHeatmap) {
+              _markers.add(
+                Marker(
+                  markerId: MarkerId(report.id),
+                position: LatLng(report.lat, report.lng),
+                icon: BitmapDescriptor.defaultMarkerWithHue(hue),
+                onTap: () => _showReportDetails(report),
               ),
-            );
+              );
+            }
+
+            // Add risk radius circle for dumping reports
+            if (report.type == 'dumping' && report.severity != null) {
+              final severity = report.severity!;
+              final radius = severity * 50.0; // meters
+              
+              Color riskColor;
+              if (severity >= 4) {
+                riskColor = Colors.red;
+              } else if (severity >= 3) {
+                riskColor = Colors.orange;
+              } else {
+                riskColor = Colors.yellow;
+              }
+
+              _circles.add(
+                Circle(
+                  circleId: CircleId('risk_${report.id}'),
+                  center: LatLng(report.lat, report.lng),
+                  radius: radius,
+                  fillColor: riskColor.withOpacity(0.2),
+                  strokeColor: riskColor.withOpacity(0.5),
+                  strokeWidth: 2,
+                ),
+              );
+            }
           }
-        }
+        });
+      }, onError: (e) {
+        print('Reports subscription error: $e');
       });
-    });
+    } catch (e) {
+      print('Reports subscription setup error: $e');
+    }
   }
 
   Future<void> _cleanThisDump(Report report) async {
@@ -1088,7 +1129,11 @@ class _ExploreScreenState extends State<ExploreScreen> {
             markers: _markers,
             circles: _circles,
             onMapCreated: (controller) {
+              print('Map controller created successfully');
               _mapController = controller;
+              setState(() {
+                _mapReady = true;
+              });
 
               if (_currentLatLng != null) {
                 _mapController!.animateCamera(
@@ -1109,6 +1154,18 @@ class _ExploreScreenState extends State<ExploreScreen> {
             tiltGesturesEnabled: true,
             zoomControlsEnabled: false,
           ),
+          // Loading indicator
+          if (!_mapReady)
+            const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('Loading map...'),
+                ],
+              ),
+            ),
           // Return to My Location Button
           Positioned(
             right: 16,

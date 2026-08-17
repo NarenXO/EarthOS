@@ -51,8 +51,9 @@ class AxisService {
 
       // Default: conversational response with system context
       return await _handleConversationalIntent(message, user, systemContext);
-    } catch (e) {
-      print("AxisService error: $e");
+    } catch (e, stackTrace) {
+      print('AxisService error: $e');
+      print('AxisService stack: $stackTrace');
       return AxisResponse(
         message: "I encountered an error processing your request. Please try again.",
         executedAction: false,
@@ -74,132 +75,205 @@ class AxisService {
   }
 
   Future<AxisResponse> _handleImpactIntent(UserIdentity user) async {
-    final userImpact = await _reportService.fetchUserImpact(user.id);
-    final globalImpact = await _reportService.fetchImpactStats();
+    try {
+      final userImpact = await _reportService.fetchUserImpact(user.id);
+      final globalImpact = await _reportService.fetchImpactStats();
 
-    final response = '''
+      final userImpactSafe = Map<String, dynamic>.from(userImpact as Map);
+      final globalImpactSafe = Map<String, dynamic>.from(globalImpact as Map);
+
+      final response = '''
 📊 YOUR ENVIRONMENTAL IMPACT
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Your Reports: ${userImpact['totalReports']}
-Verified Cleanups: ${userImpact['verifiedReports']}
-Total Carbon Diverted: ${userImpact['totalCarbonImpact'].toStringAsFixed(2)} kg CO₂e
-Verified Carbon: ${userImpact['totalVerifiedCarbon'].toStringAsFixed(2)} kg CO₂e
+Your Reports: ${userImpactSafe['totalReports'] ?? 0}
+Verified Cleanups: ${userImpactSafe['verifiedReports'] ?? 0}
+Total Carbon Diverted: ${(userImpactSafe['totalCarbonImpact'] as num?)?.toStringAsFixed(2) ?? '0.00'} kg CO₂e
+Verified Carbon: ${(userImpactSafe['totalVerifiedCarbon'] as num?)?.toStringAsFixed(2) ?? '0.00'} kg CO₂e
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Global Impact:
-Total Reports: ${globalImpact['totalReports']}
-Verified Cleanups: ${globalImpact['verifiedReports']}
-Total Carbon Diverted: ${globalImpact['totalCarbonImpact'].toStringAsFixed(2)} kg CO₂e
+Total Reports: ${globalImpactSafe['totalReports'] ?? 0}
+Verified Cleanups: ${globalImpactSafe['verifiedReports'] ?? 0}
+Total Carbon Diverted: ${(globalImpactSafe['totalCarbonImpact'] as num?)?.toStringAsFixed(2) ?? '0.00'} kg CO₂e
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ''';
-    return AxisResponse(message: response, executedAction: true);
+      return AxisResponse(message: response, executedAction: true);
+    } catch (e, stackTrace) {
+      print('AxisService _handleImpactIntent error: $e');
+      print('AxisService stack: $stackTrace');
+      return AxisResponse(
+        message: 'Error fetching impact data. Please try again.',
+        executedAction: false,
+      );
+    }
   }
 
   Future<AxisResponse> _handleRiskIntent(Map<String, dynamic> context) async {
-    final userImpact = context['userImpact'] as Map<String, dynamic>;
-    final nearbyOpenReports = context['nearbyOpenReports'] as int;
-    final forestAlerts = context['forestAlerts'] as Map<String, dynamic>;
-    final highForestAlerts = forestAlerts['highConfidence'] as int;
+    try {
+      final userImpact = context['userImpact'] != null 
+          ? Map<String, dynamic>.from(context['userImpact'] as Map)
+          : <String, dynamic>{};
+      final nearbyOpenReports = (context['nearbyOpenReports'] as int?) ?? 0;
+      final forestAlerts = context['forestAlerts'] != null
+          ? Map<String, dynamic>.from(context['forestAlerts'] as Map)
+          : <String, dynamic>{};
+      final highForestAlerts = (forestAlerts['highConfidence'] as int?) ?? 0;
 
-    final riskScore = RiskEngine.calculateRiskScore(
-      nearbyOpenReports: nearbyOpenReports,
-      sensitiveReports: userImpact['totalSensitiveReports'] as int? ?? 0,
-      highForestAlerts: highForestAlerts,
-      daysSinceLastCleanup: 0,
-    );
+      final riskScore = RiskEngine.calculateRiskScore(
+        nearbyOpenReports: nearbyOpenReports,
+        sensitiveReports: (userImpact['totalSensitiveReports'] as int?) ?? 0,
+        highForestAlerts: highForestAlerts,
+        daysSinceLastCleanup: 0,
+      );
 
-    final explanation = RiskEngine.getRiskExplanation(
-      score: riskScore,
-      nearbyOpenReports: nearbyOpenReports,
-      sensitiveReports: userImpact['totalSensitiveReports'] as int? ?? 0,
-      highForestAlerts: highForestAlerts,
-      daysSinceLastCleanup: 0,
-    );
+      final explanation = RiskEngine.getRiskExplanation(
+        score: riskScore,
+        nearbyOpenReports: nearbyOpenReports,
+        sensitiveReports: (userImpact['totalSensitiveReports'] as int?) ?? 0,
+        highForestAlerts: highForestAlerts,
+        daysSinceLastCleanup: 0,
+      );
 
-    return AxisResponse(message: explanation, executedAction: true);
+      return AxisResponse(message: explanation, executedAction: true);
+    } catch (e, stackTrace) {
+      print('AxisService _handleRiskIntent error: $e');
+      print('AxisService stack: $stackTrace');
+      return AxisResponse(
+        message: 'Error calculating risk. Please try again.',
+        executedAction: false,
+      );
+    }
   }
 
   Future<AxisResponse> _handleTrendIntent(Map<String, dynamic> context) async {
-    final reports = await _reportService.fetchReports();
-    final forestAlerts = context['forestAlerts'] as Map<String, dynamic>;
+    try {
+      final reports = await _reportService.fetchReports();
+      final forestAlerts = context['forestAlerts'] != null
+          ? Map<String, dynamic>.from(context['forestAlerts'] as Map)
+          : <String, dynamic>{};
 
-    final trends = await _trendService.calculateTrends(
-      reports: reports.map((r) => r.toJson()).toList(),
-      forestAlerts: [forestAlerts],
-    );
+      final trends = await _trendService.calculateTrends(
+        reports: reports.map((r) => r.toJson()).toList(),
+        forestAlerts: [forestAlerts],
+      );
 
-    final explanation = _trendService.getTrendExplanation(
-      weeklyReportChange: trends['weeklyReportChange'] as double,
-      cleanupEfficiencyChange: trends['cleanupEfficiencyChange'] as double,
-      forestTrendChange: trends['forestTrendChange'] as double,
-    );
+      final trendsSafe = Map<String, dynamic>.from(trends as Map);
 
-    return AxisResponse(message: explanation, executedAction: true);
+      final explanation = _trendService.getTrendExplanation(
+        weeklyReportChange: (trendsSafe['weeklyReportChange'] as num?)?.toDouble() ?? 0.0,
+        cleanupEfficiencyChange: (trendsSafe['cleanupEfficiencyChange'] as num?)?.toDouble() ?? 0.0,
+        forestTrendChange: (trendsSafe['forestTrendChange'] as num?)?.toDouble() ?? 0.0,
+      );
+
+      return AxisResponse(message: explanation, executedAction: true);
+    } catch (e, stackTrace) {
+      print('AxisService _handleTrendIntent error: $e');
+      print('AxisService stack: $stackTrace');
+      return AxisResponse(
+        message: 'Error calculating trends. Please try again.',
+        executedAction: false,
+      );
+    }
   }
 
   Future<AxisResponse> _handleRecommendIntent(Map<String, dynamic> context) async {
-    final nearbyOpenReports = context['nearbyOpenReports'] as int;
-    final forestAlerts = context['forestAlerts'] as Map<String, dynamic>;
-    final highForestAlerts = forestAlerts['highConfidence'] as int;
-    final rank = context['rank'] as int;
+    try {
+      final nearbyOpenReports = (context['nearbyOpenReports'] as int?) ?? 0;
+      final forestAlerts = context['forestAlerts'] != null
+          ? Map<String, dynamic>.from(context['forestAlerts'] as Map)
+          : <String, dynamic>{};
+      final highForestAlerts = (forestAlerts['highConfidence'] as int?) ?? 0;
+      final rank = (context['rank'] as int?) ?? 0;
 
-    final trends = {'weeklyReportChange': 0.0};
+      final trends = {'weeklyReportChange': 0.0};
 
-    final recommendations = RecommendationEngine.generateRecommendations(
-      riskScore: 0.0,
-      trends: trends,
-      nearbyOpenReports: nearbyOpenReports,
-      forestHighConfidence: highForestAlerts,
-      userRank: rank,
-    );
+      final recommendations = RecommendationEngine.generateRecommendations(
+        riskScore: 0.0,
+        trends: trends,
+        nearbyOpenReports: nearbyOpenReports,
+        forestHighConfidence: highForestAlerts,
+        userRank: rank,
+      );
 
-    final formatted = RecommendationEngine.formatRecommendations(recommendations);
-    return AxisResponse(message: formatted, executedAction: true);
+      final formatted = RecommendationEngine.formatRecommendations(recommendations);
+      return AxisResponse(message: formatted, executedAction: true);
+    } catch (e, stackTrace) {
+      print('AxisService _handleRecommendIntent error: $e');
+      print('AxisService stack: $stackTrace');
+      return AxisResponse(
+        message: 'Error generating recommendations. Please try again.',
+        executedAction: false,
+      );
+    }
   }
 
   Future<AxisResponse> _handleForestIntent(Map<String, dynamic> context) async {
-    final forestAlerts = context['forestAlerts'] as Map<String, dynamic>;
+    try {
+      final forestAlerts = context['forestAlerts'] != null
+          ? Map<String, dynamic>.from(context['forestAlerts'] as Map)
+          : <String, dynamic>{};
 
-    final response = '''
+      final response = '''
 🌲 FOREST MONITORING
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Total Alerts: ${forestAlerts['alertCount']}
-High Confidence: ${forestAlerts['highConfidence']}
-Medium Confidence: ${forestAlerts['mediumConfidence']}
-Recent Alerts (30 days): ${forestAlerts['recentAlerts']}
+Total Alerts: ${forestAlerts['alertCount'] ?? 0}
+High Confidence: ${forestAlerts['highConfidence'] ?? 0}
+Medium Confidence: ${forestAlerts['mediumConfidence'] ?? 0}
+Recent Alerts (30 days): ${forestAlerts['recentAlerts'] ?? 0}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-${forestAlerts['alertCount'] > 0 ? '⚠️ Forest loss activity detected in your region' : '✓ No significant forest alerts detected'}
+${((forestAlerts['alertCount'] as int?) ?? 0) > 0 ? '⚠️ Forest loss activity detected in your region' : '✓ No significant forest alerts detected'}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ''';
-    return AxisResponse(message: response, executedAction: true);
+      return AxisResponse(message: response, executedAction: true);
+    } catch (e, stackTrace) {
+      print('AxisService _handleForestIntent error: $e');
+      print('AxisService stack: $stackTrace');
+      return AxisResponse(
+        message: 'Error fetching forest alerts. Please try again.',
+        executedAction: false,
+      );
+    }
   }
 
   Future<AxisResponse> _handleWeeklyIntent(Map<String, dynamic> context) async {
-    final userImpact = context['userImpact'] as Map<String, dynamic>;
-    final globalImpact = context['globalImpact'] as Map<String, dynamic>;
-    final rank = context['rank'] as int;
+    try {
+      final userImpact = context['userImpact'] != null
+          ? Map<String, dynamic>.from(context['userImpact'] as Map)
+          : <String, dynamic>{};
+      final globalImpact = context['globalImpact'] != null
+          ? Map<String, dynamic>.from(context['globalImpact'] as Map)
+          : <String, dynamic>{};
+      final rank = (context['rank'] as int?) ?? 0;
 
-    final response = '''
+      final response = '''
 📅 WEEKLY SUMMARY
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Your Progress:
-• Reports Submitted: ${userImpact['totalReports']}
-• Verified Cleanups: ${userImpact['verifiedReports']}
-• Carbon Diverted: ${userImpact['totalCarbonImpact'].toStringAsFixed(2)} kg CO₂e
+• Reports Submitted: ${userImpact['totalReports'] ?? 0}
+• Verified Cleanups: ${userImpact['verifiedReports'] ?? 0}
+• Carbon Diverted: ${(userImpact['totalCarbonImpact'] as num?)?.toStringAsFixed(2) ?? '0.00'} kg CO₂e
 • Your Rank: #$rank
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Global Progress:
-• Total Reports: ${globalImpact['totalReports']}
-• Verified Cleanups: ${globalImpact['verifiedReports']}
-• Total Carbon: ${globalImpact['totalCarbonImpact'].toStringAsFixed(2)} kg CO₂e
+• Total Reports: ${globalImpact['totalReports'] ?? 0}
+• Verified Cleanups: ${globalImpact['verifiedReports'] ?? 0}
+• Total Carbon: ${(globalImpact['totalCarbonImpact'] as num?)?.toStringAsFixed(2) ?? '0.00'} kg CO₂e
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Keep up the great work, ${context['userImpact']['createdBy'] ?? 'environmental champion'}!
+Keep up the great work, ${userImpact['createdBy'] ?? 'environmental champion'}!
 ''';
-    return AxisResponse(message: response, executedAction: true);
+      return AxisResponse(message: response, executedAction: true);
+    } catch (e, stackTrace) {
+      print('AxisService _handleWeeklyIntent error: $e');
+      print('AxisService stack: $stackTrace');
+      return AxisResponse(
+        message: 'Error fetching weekly summary. Please try again.',
+        executedAction: false,
+      );
+    }
   }
 
   Future<AxisResponse> _handleEventIntent() async {
@@ -242,22 +316,33 @@ Keep up the great work, ${context['userImpact']['createdBy'] ?? 'environmental c
     UserIdentity user,
     Map<String, dynamic> context,
   ) async {
-    final userImpact = context['userImpact'] as Map<String, dynamic>;
-    final rank = context['rank'] as int;
+    try {
+      final userImpact = context['userImpact'] != null
+          ? Map<String, dynamic>.from(context['userImpact'] as Map)
+          : <String, dynamic>{};
+      final rank = (context['rank'] as int?) ?? 0;
 
-    final prompt = '''
+      final prompt = '''
 You are EarthOS, an AI assistant for environmental conservation and climate action.
 
 User: ${user.name}
 Your Rank: #$rank
-Your Reports: ${userImpact['totalReports']}
-Your Carbon Diverted: ${userImpact['totalCarbonImpact'].toStringAsFixed(2)} kg CO₂e
+Your Reports: ${userImpact['totalReports'] ?? 0}
+Your Carbon Diverted: ${(userImpact['totalCarbonImpact'] as num?)?.toStringAsFixed(2) ?? '0.00'} kg CO₂e
 
 User message: $message
 
 Provide a helpful, conversational response about environmental topics.
 ''';
-    final response = await GeminiService.generate(prompt);
-    return AxisResponse(message: response, executedAction: false);
+      final response = await GeminiService.generate(prompt);
+      return AxisResponse(message: response, executedAction: false);
+    } catch (e, stackTrace) {
+      print('AxisService _handleConversationalIntent error: $e');
+      print('AxisService stack: $stackTrace');
+      return AxisResponse(
+        message: 'I encountered an error. Please try again.',
+        executedAction: false,
+      );
+    }
   }
 }
