@@ -55,8 +55,4 @@ class AppConfig {
   );
 
   static const String groqTextEndpoint = 'https://api.groq.com/openai/v1/chat/completions';
-
-  static const String groqTextModel = 'llama-3.3-70b-versatile';
-
-  static const String groqVisionModel = 'llama-3.2-90b-vision-preview';
 }

@@ -3,78 +3,104 @@ import 'package:http/http.dart' as http;
 import '../config/app_config.dart';
 
 class GroqService {
+  static const List<String> _textModels = [
+    'llama-3.1-8b-instant',
+    'llama-3.1-70b-versatile',
+    'mixtral-8x7b-32768',
+    'gemma2-9b-it',
+  ];
+  
+  static const List<String> _visionModels = [
+    'llama-3.2-11b-vision-preview',
+    'llama-3.2-90b-vision-preview',
+  ];
+
   static Future<String> generate(String prompt) async {
-    try {
-      print('GroqService: calling ${AppConfig.groqTextModel}');
-      final response = await http.post(
-        Uri.parse(AppConfig.groqTextEndpoint),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ${AppConfig.groqApiKey}',
-        },
-        body: jsonEncode({
-          'model': AppConfig.groqTextModel,
-          'messages': [
-            {'role': 'user', 'content': prompt}
-          ],
-          'temperature': 0.7,
-          'max_tokens': 1024,
-        }),
-      ).timeout(const Duration(seconds: 30));
+    for (var model in _textModels) {
+      try {
+        print('GroqService: try model=$model');
+        final response = await http.post(
+          Uri.parse(AppConfig.groqTextEndpoint),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ${AppConfig.groqApiKey}',
+          },
+          body: jsonEncode({
+            'model': model,
+            'messages': [{'role': 'user', 'content': prompt}],
+            'temperature': 0.7,
+            'max_tokens': 1024,
+          }),
+        ).timeout(const Duration(seconds: 30));
 
-      print('GroqService: status=${response.statusCode}');
+        print('GroqService: status=${response.statusCode} model=$model');
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return data['choices'][0]['message']['content'] as String;
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body);
+          return data['choices'][0]['message']['content'] as String;
+        }
+        
+        if (response.statusCode == 404) {
+          print('GroqService: model deprecated, trying next');
+          continue;
+        }
+        
+        print('GroqService error body: ${response.body}');
+      } catch (e) {
+        print('GroqService exception: $e');
+        continue;
       }
-      print('GroqService error body: ${response.body}');
-      return '';
-    } catch (e) {
-      print('GroqService exception: $e');
-      return '';
     }
+    return '';
   }
 
   static Future<String> generateWithImage(String prompt, String base64Image) async {
-    try {
-      print('GroqService: calling vision ${AppConfig.groqVisionModel}');
-      final response = await http.post(
-        Uri.parse(AppConfig.groqTextEndpoint),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ${AppConfig.groqApiKey}',
-        },
-        body: jsonEncode({
-          'model': AppConfig.groqVisionModel,
-          'messages': [
-            {
-              'role': 'user',
-              'content': [
-                {'type': 'text', 'text': prompt},
-                {
-                  'type': 'image_url',
-                  'image_url': {'url': 'data:image/jpeg;base64,$base64Image'}
-                }
-              ]
-            }
-          ],
-          'temperature': 0.1,
-          'max_tokens': 512,
-        }),
-      ).timeout(const Duration(seconds: 45));
+    for (var model in _visionModels) {
+      try {
+        print('GroqService vision: try model=$model');
+        final response = await http.post(
+          Uri.parse(AppConfig.groqTextEndpoint),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ${AppConfig.groqApiKey}',
+          },
+          body: jsonEncode({
+            'model': model,
+            'messages': [
+              {
+                'role': 'user',
+                'content': [
+                  {'type': 'text', 'text': prompt},
+                  {
+                    'type': 'image_url',
+                    'image_url': {'url': 'data:image/jpeg;base64,$base64Image'}
+                  }
+                ]
+              }
+            ],
+            'temperature': 0.1,
+            'max_tokens': 512,
+          }),
+        ).timeout(const Duration(seconds: 45));
 
-      print('GroqService vision: status=${response.statusCode}');
+        print('GroqService vision: status=${response.statusCode}');
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return data['choices'][0]['message']['content'] as String;
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body);
+          return data['choices'][0]['message']['content'] as String;
+        }
+        
+        if (response.statusCode == 404) {
+          print('GroqService vision: model deprecated, trying next');
+          continue;
+        }
+        
+        print('GroqService vision error: ${response.body}');
+      } catch (e) {
+        print('GroqService vision exception: $e');
+        continue;
       }
-      print('GroqService vision error body: ${response.body}');
-      return '';
-    } catch (e) {
-      print('GroqService vision exception: $e');
-      return '';
     }
+    return '';
   }
 }
