@@ -1,4 +1,4 @@
-﻿/*
+/*
 |--------------------------------------------------------------------------
 | EarthOS
 | File: app_config.dart
@@ -48,4 +48,15 @@ class AppConfig {
     'WAQI_TOKEN',
     defaultValue: 'c5c973401d8da5472980d0792853b96c190d31a3',
   );
+
+  static const String groqApiKey = String.fromEnvironment(
+    'GROQ_API_KEY',
+    defaultValue: '',
+  );
+
+  static const String groqTextEndpoint = 'https://api.groq.com/openai/v1/chat/completions';
+
+  static const String groqTextModel = 'llama-3.3-70b-versatile';
+
+  static const String groqVisionModel = 'llama-3.2-90b-vision-preview';
 }
